@@ -1,0 +1,33 @@
+sudo apt update && sudo apt upgrade -y
+sudo apt install -y apache2 mariadb-server php php-mysql php-xml php-gd php-curl php-mbstring php-zip php-intl
+sudo systemctl enable apache2 --now
+sudo mysql_secure_installation
+sudo MySQL
+CREATE DATABASE wordpress DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE USER 'wpuser'@'localhost' IDENTIFIED BY 'StrongPasswordHere';
+GRANT ALL PRIVILEGES ON wordpress.* TO 'wpuser'@'localhost';
+FLUSH PRIVILEGES;
+EXIT;
+cd /var/www
+sudo rm -rf html
+sudo mkdir wordpress
+cd wordpress
+sudo wget https://wordpress.org/latest.tar.gz
+sudo tar -xzf latest.tar.gz
+sudo mv wordpress/* .
+sudo rm -rf wordpress latest.tar.gz
+sudo chown -R www-data:www-data /var/www/wordpress
+sudo find /var/www/wordpress -type d -exec chmod 755 {} \;
+sudo find /var/www/wordpress -type f -exec chmod 644 {} \;
+sudo nano /etc/apache2/sites-available/wordpress.conf
+<VirtualHost *:80>
+    DocumentRoot /var/www/wordpress
+    <Directory /var/www/wordpress>
+        AllowOverride All
+        Require all granted
+    </Directory>
+</VirtualHost>
+sudo a2dissite 000-default.conf
+sudo a2ensite wordpress.conf
+sudo a2enmod rewrite
+sudo systemctl reload apache2

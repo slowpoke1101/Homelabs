@@ -1,0 +1,477 @@
+
+
+
+#save iptables rules
+sudo sh -c "iptables-save > /etc/iptables/rules.v4"
+
+#bring interface up/down
+sudo ip link set <eth0> down
+sudo ip link set <eth0> up
+
+#find
+sudo find /srv -type f -name "docker-compose.yml"
+
+#shows dns
+system-resolve --status | grep -A2 'DNS Servers'
+
+sudo du /var/www/html/nextcloud/data/nxadmin/files
+
+# CHECK THE CRON
+sudo -u www-data crontab -e
+
+# builds previews for all files in nextcloud
+sudo -u www-data php /var/www/nextcloud/occ preview:generate-all
+
+# gets latest errors                       #for selinux#for selinx#
+sudo journalctl -u <service> \ -k(kernel) \ setroubleshoot \ audit \
+                --since "today 8am, 10 minutes ago" yesterday \
+                -p warning, err, crit \
+    # this boot -b \
+    # last boot -b -1 \
+    # live      -f
+
+# refreshes host ssh keys
+ssh-keygen -R <ipaddr>
+
+# ssh key location
+~/.ssh/authorized_keys
+
+#added these lines to /etc/unbound/unbound.conf.d/pi-hole.conf
+# in lieu of switching to dns over tls DOT
+harden-referral-path: yes
+aggressive-nsec: yes
+
+# below is after i learned about basic enumeration
+# removing banners so that curl doesn't return the version number of my services
+# HIDE APACHE VERSION
+sudo nano /etc/apache2/conf-available/security.conf
+#find ServerTokens OS
+#     ServerSignature On
+#change to
+ServerTokens Prod
+ServerSignature Off
+sudo a2enconf security
+sudo systemctl reload apache2
+# HIDE OPENSSH VERSION
+#create banner file
+echo "Authorized access only." | sudo tee /etc/issue.net
+#edit ssh config
+sudo nano /etc/ssh/sshd_config
+Banner /etc/issue.net
+DebianBanner no
+nc 10.7.7.1 22
+sudo systemctl restart ssh
+# HIDE PHP VERSION
+sudo nano /etc/php/*/apache2/php.ini
+# find expose_php = On
+expose_php = Off
+sudo systemctl restart apache2
+#it was already off
+------------------------------------------------------------------------
+------------------------------------------------------------------------
+mimiserver = samsungevo870ssd+pi4 10.7.7.1, 192.168.1.147
+lons = iPhone 10.7.7.4
+izzy = Laptop(windows11) 10.7.7.7
+WIREGUARD
+installed wireguard/wireguard-tools 
+generated private and public keys set permissions
+created wg0.conf
+set some ufw and port forwarding nat rules
+
+enable ipv4 forwarding: 
+sudo sysctl -w net.ipv4.ip_forward=1
+echo "net.ipv4.ip_forward=1" | sudo tee /etc/sysctl.d/99-wireguard-forwarding.conf
+
+generated client keys and client configs
+wg genkey | tee ~/wg-private.key | wg pubkey > ~/wg-public.key
+created ssh keys for both izzy(powershell) and lons(terminus) and disabled ssh pw login
+
+NEXTCLOUD
+installed apache2 and it's dependencies
+imported old crt, key, pem from disk2 and placed them in proper directories for future use by nextcloud and clients.
+created /var/www/html/nextcloud and installed nextcloud and created
+nextcloud config virtualhost-10.7.7.1:443
+enabled rewrite + headers and ssl and nextcloud.conf
+disabled 000-default.conf site
+
+installed mariadb-server
+created database and user for nextcloud
+created nextcloud admin page credentials and setup
+installed apcu and redis for memecache and tfl
+opcache interned strings buffer fix
+htsts header missing fix
+database missing indices fix
+mimetype migrations fix
+nextcloud cron activated
+installed imagemagick
+these last several steps were in order to remove errors from nextcloud admin page
+
+PIHOLE
+installed pihole
+installed padd
+created redirect.conf for port 80
+adjusted pihole.toml to port = "127.0.0.1:8080"
+
+UNBOUND
+downloaded unbound and created pihole.conf
+pointed pihole to unbound at 127.0.0.1#5335
+
+set ufw rule 10.7.7.1 443 because nextcloud broke after installing unbound/pihole
+
+PHP tuned (OPcache, APCu, Redis)
+- Redis file locking
+- Redis memory cache
+- APCu local cache
+- OPcache tuning
+
+MariaDB tuned for 8GB RAM + SSD
+- 2GB buffer pool
+- SSD‑optimized flush settings
+- large tmp tables
+- UTF8MB4
+- log file tuning
+
+
+Cron jobs configured
+- the main 5‑minute Nextcloud cron
+- the nightly preview generator
+- optional weekly maintenance tasks
+
+
+Integrated fail2ban created a default and then local jails for
+sshd
+apache auth
+nextcloud( we added a nextcloud.conf to /etc/fail2ban/filter.d with some regex lines? i forgot)
+apache badbots
+apache noscript
+wireguard jail( we also added wireguard.conf to /etc/fail2ban/filter.d with some regex lines? i dont know what that does)
+recidive (for repeat offenders)
+
+this is our ufw settings
+markiemarco@mimiserver:~$ sudo ufw status verbose
+Status: active
+Logging: on (low)
+Default: deny (incoming), allow (outgoing), deny (routed)
+New profiles: skip
+
+To                         Action      From
+--                         ------      ----
+8443/udp                   ALLOW IN    Anywhere
+22 on wg0                  ALLOW IN    Anywhere
+53/udp on wg0              ALLOW IN    10.7.7.4
+53/tcp on wg0              ALLOW IN    10.7.7.4
+53/udp on wg0              ALLOW IN    10.7.7.7
+53/tcp on wg0              ALLOW IN    10.7.7.7
+53 on wg0                  DENY IN     Anywhere
+443/tcp on wg0             ALLOW IN    Anywhere
+22 (v6) on wg0             ALLOW IN    Anywhere (v6)
+53 (v6) on wg0             DENY IN     Anywhere (v6)
+443/tcp (v6) on wg0        ALLOW IN    Anywhere (v6)
+
+Anywhere                   ALLOW OUT   Anywhere on wg0
+Anywhere (v6)              ALLOW OUT   Anywhere (v6) on wg0
+
+Anywhere on eth0           ALLOW FWD   Anywhere on wg0
+Anywhere on wg0            ALLOW FWD   Anywhere on eth0
+Anywhere (v6) on eth0      ALLOW FWD   Anywhere (v6) on wg0
+Anywhere (v6) on wg0       ALLOW FWD   Anywhere (v6) on eth0
+
+edited /etc/systemd/resolved.conf to add 127.0.0.1(unbound bound locally) as the only dns server. hopefully will resolve dig 1.1.1.1 returning router as dns server.
+mimiserver now globally looks to itself for dns but eth0 still looks to router so created /etc/systemd/network/10-eth0-dns.conf that contains 
+[Match]
+Name=eth0
+[Network]
+DNS=127.0.0.1
+Domains=~.  #THis routes all domains
+that didn't work. trying to edit /etc/netplan/99-ethernet.yaml to add
+nameservers:
+    addresses:
+        - 127.0.0.1
+that worked to add mimiserver as dns on eth0 but router still remains listed as dns. will add more to .yaml
+dhcp4-overrides:
+    use-dns: false
+THIS WORKED! upstream dns is mimiserver's loopback address WOOT!
+
+
+JAN 10 2026
+#THIS DISABLED IPV6 ON MIMISERVER
+sudo nano /etc/sysctl.d/99-disable-ipv6.conf
+net.ipv6.conf.all.disable_ipv6 = 1
+net.ipv6.conf.default.disable_ipv6 = 1
+net.ipv6.conf.lo.disable_ipv6 = 1
+net.ipv6.conf.eth0.disable_ipv6 = 1
+net.ipv6.conf.eth0.accept_ra = 0
+net.ipv6.conf.eth0.autoconf = 0
+net.ipv6.conf.eth0.100.disable_ipv6 = 1
+net.ipv6.conf.eth0.100.accept_ra = 0
+net.ipv6.conf.eth0.100.autoconf = 0
+sudo sysctl -p /etc/sysctl.d/99-disable-ipv6.conf
+sudo sysctl --system
+REBOOT
+sudo systemctl --failed
+ip a | grep inet6
+ADDED TO /etc/netplan/99-ethernet.yaml
+dhcp6: false
+accept-ra: false
+link-local: [] #ipv6 = false not recognized
+EXTRA STEP (optional but i did it, remaining ip6 address WAS on wlan0)
+sudo nano /etc/sysctl.d/99-disable-ipv6.conf
+net.ipv6.conf.wlan0.disable_ipv6 = 1
+net.ipv6.conf.wlan0.accept_ra = 0
+net.ipv6.conf.wlan0.autoconf = 0
+sudo sysctl --system
+ADD THIS TO 50-cloud-init.yaml
+        wlan0:
+            dhcp4: true
+            dhcp6: false
+            accept-ra: false
+            link-local: []
+            optional: true
+sudo netplan apply
+sudo reboot
+ip a | grep inet6
+systemctl --failed
+::::::::::::::::::::::::::
+::BENCHMARK IPv6 DISABLED:
+::::::::::::::::::::::::::
+#DISABLE LAST SERVICE AVAHI DAEMON
+sudo systemctl stop avahi-daemon.service
+sudo systemctl stop avahi-daemon.socket
+sudo systemctl disable avahi-daemon.service
+sudo systemctl disable avahi-daemon.socket
+sudo systemctl mask avahi-daemon.service
+sudo systemctl mask avahi-daemon.socket
+sudo ss -tulpen | grep avahi
+systemctl list-unit-files | grep avahi
+
+JAN 12 2026
+#install server tools
+sudo apt update
+sudo apt upgrade #successful
+sudo apt install iftop nethogs bmon rkhunter traceroute
+#CHOSE 'local only' for POSTFIX config options after install
+#CHOSE 'localhost' for next screen
+#if necessary after rkhunter install
+#sudo dpkg-reconfigure postfix
+#manually update rkhunter
+#only run propupd after trusted updates, system config changes, package installs
+sudo rkhunter --propupd
+sudo nano /etc/rkhunter.conf
+WEB_CMD=/bin/false to WEB_CMD=curl
+sudo rkhunter --update
+sudo rkhunter --check
+#for checking /dev for suspicious files
+ls -lR /dev | grep '^-' | grep -v 'null\|zero\|random\|urandom'
+#for checking for hidden files and directories
+
+#Disable ssh permitrootlogin = no
+sudo nano /etc/ssh/sshd_config.d/50-cloud-init.conf
+sudo systemctl reload sshd
+sudo apt install logwatch
+sudo logwatch --detail low --service all --range today
+sudo iftop -i wg0/eth0
+sudo nethogs <wg0>#optional
+bmon
+
+##########FOR UPGRADES############
+dpkg --get-selections > packages.before.txt
+dpkg --get-selections > packages.after.txt
+
+JAN 13 2026
+#check listeners bound to eth0
+sudo ss -tunlp | grep -v 127.0.0.1
+#confirm pihole+unbound are only bound only to wg0 or localhost
+#check for rogue services: avahi, cups, samba, nginx, cockpit, rpcbind
+sudo systemctl list-units --type=service | grep running
+#these services are okay
+cron. dbus. fail2ban. getty@tty1. irqbalance. MariaDB. networkd-dispatcher. php*-fpm. pihole-FTL. redis-server. rsyslog. ssh. systemd-journald. systemd-logind. systemd-networkd. systemd-resolved. systemd-timesyncd. systemd-udevd. unbound. user@1000. 
+#found unnecessary services running, will disable
+#leaving apache2 and Bluetooth/hciuart on
+sudo systemctl disable --now postfix
+sudo systemctl disable --now snapd
+sudo systemctl disable --now netplan-wpa-wlan0
+sudo systemctl disable --now wpa_supplicant
+#sudo ss -tunp SHOWS ESTABLISHED CONNECTIONS
+#########iftop revealed a bunch of lan noise on mimiserver so we add these##############
+#sudo iptables -I INPUT 1 -i eth0 -j DROP
+#sudo iptables -I FORWARD 1 -i eth0 -j DROP
+#to undo, reboot, delete by line number, or
+#sudo iptables -D INPUT 1 -i eth0 -j DROP
+#sudo iptables -D FORWARD 1 -i eth0 -j DROP
+#sudo apt install iptables-persistent
+#sudo netfilter-persistent save
+############THIS BROKE SSH FROM IZZY#################################################
+#STICKING WITH UFW
+sudo ufw deny in on eth0 from 192.168.1.0/24
+sudo ufw deny out on eth0 to 192.168.1.0/24
+sudo ufw reload
+#this does not block 192.168.1.254 because of default gateway route
+#if mimiserver see's a packet isn't destined for 192.168.1.0/24(LAN subnet) it will
+#forward the packet to it's gateway
+#######removing ipv6 rules from ufw##############
+cat /proc/sys/net/ipv6/conf/all/disable_ipv6
+cat /proc/sys/net/ipv6/conf/default/disable_ipv6
+cat /proc/sys/net/ipv6/conf/eth0/disable_ipv6
+#all of these should return 1
+grep ipv6 /etc/sysctl.conf
+#these should be shown, if not add them to /etc/sysctl.conf and run sudo sysctl -p
+net.ipv6.conf.all.disable_ipv6 = 1
+net.ipv6.conf.default.disable_ipv6 = 1
+#THE ABOVE lines do not need to be added if the 3 cat lines before returned 1.
+#this is because ubuntu loads sysctl files from /etc/sysctl.d/*.conf
+#and adding duplicate lines to /etc/sysctl.conf can cause confusion later(which file is authoritative?)
+#check this to confirm ipv6 disabled on router
+ip -6 addr #lo and link-local okay
+#confirm ufw isn't using ipv6 mode
+grep IPV6 /etc/default/ufw
+#IPV6=no
+#if =yes then change and sudo ufw reload
+#ON MIMISERVER IPV6=yes so i changed to =no and all v6 rules were autoremoved from ufw status
+######AFTER THESE IPV6 CONFIRMED DISABLED AND CAN REMOVE iptables/ufw RULES#########
+#####disable ipv6 on home router settings and complete 'this disabled ipv6'#########
+_______________________________________________________________________
+JAN 24
+# add light user profile for lons
+#generate keys
+ssh-keygen -t ed25519 -f /home/lons/.ssh/lons_key
+sudo adduser lons
+sudo mkdir -p /home/lons/.ssh
+sudo nano /home/lons/.ssh/authorized_keys
+#paste lons terminus key inside
+sudo chown -R lons:lons /home/lons
+sudo chmod 700 /home/lons
+sudo chmod 700 /home/lons/.ssh
+sudo chmod 600 /home/lons/.ssh/authorized_keys
+#create the restricted sudo allowlist
+lons ALL=(root) NOPASSWD: \
+    /bin/systemctl restart apache2, \
+    /bin/systemctl start apache2, \
+    /bin/systemctl stop apache2, \
+    /bin/systemctl status apache2, \
+    /bin/systemctl reboot, \
+    /bin/journalctl -u apache2, \
+    /bin/journalctl -xe, \
+    /bin/systemctl status
+###### I ADDED MANY MORE COMMANDS ########
+sudo visudo -f /etc/sudoers.d/lons
+#above line can be used to add allowed commands
+#TO CHANGE PW ON IZZY
+sudo passwd lons
+#TO DELETE USER
+sudo deluser lons
+sudo deluser --remove-home lons
+sudo rm /etc/sudoers.d/lons
+________________________________________________________________________
+#RASPBERRYPI 192.168.1.64 wifi is showing on isp router, we will disabl|
+-----------------------------------------------------------------------|
+# comment # out all lines in /etc/netplan/50-cloud-init.yaml  including/after 'wifis'
+sudo netplan apply
+#disable at the kernel level
+sudo nano /etc/modprobe.d/raspi-blacklist.conf
+blacklist brcmfmac
+blacklist brcmutil
+#these are the two wifi driver modules for the pi4's NIC
+# just comment # the lines out to reverse it
+reboot
+# REMOVED LONS ROOT SSH PUBKEY
+# ADDED COMMANDS TO LONS-RESTRICTED USER
+________________________________________________________________________
+############# MIGRATING FROM UFW TO IPTABLES ##########################
+#snapshot current config
+sudo iptables -S > ~/iptables-before.txt
+sudo iptables -t nat -S >> ~/iptables-before.txt
+sudo ufw status verbose > ~/ufw-before.txt
+#make a script
+nano ~/iptables-mimiserver.sh
+
+#!/bin/bash
+
+# Flush existing rules
+iptables -F
+iptables -t nat -F
+iptables -t mangle -F
+iptables -X
+
+#INPUT
+iptables -A INPUT -i wg0 -s 10.7.7.7/32 -p udp --dport 53 -j ACCEPT
+iptables -A INPUT -i wg0 -s 10.7.7.7/32 -p tcp --dport 53 -j ACCEPT
+iptables -A INPUT -i wg0 -s 10.7.7.7/32 -p tcp --dport 22 -j ACCEPT
+iptables -A INPUT -i wg0 -s 10.7.7.7/32 -p tcp --dport 443 -j ACCEPT
+
+iptables -A INPUT -i wg0 -s 10.7.7.4/32 -p udp --dport 53 -j ACCEPT
+iptables -A INPUT -i wg0 -s 10.7.7.4/32 -p tcp --dport 53 -j ACCEPT
+iptables -A INPUT -i wg0 -s 10.7.7.4/32 -p tcp --dport 22 -j ACCEPT
+iptables -A INPUT -i wg0 -s 10.7.7.4/32 -p tcp --dport 443 -j ACCEPT
+
+iptables -A INPUT -i lo -j ACCEPT
+iptables -A INPUT -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
+iptables -A INPUT -i eth0 -p udp --dport 8443 -j ACCEPT
+
+iptables -A INPUT -i eth0 -s 192.168.1.0/24 -j DROP
+iptables -A INPUT -i wg0 -s 192.168.1.0/24 -j DROP
+iptables -A INPUT -j DROP
+
+# FORWARD
+iptables -A FORWARD -i wg0 -o eth0 -s 10.7.7.4/32 -j ACCEPT
+iptables -A FORWARD -i wg0 -o eth0 -s 10.7.7.7/32 -j ACCEPT
+iptables -A FORWARD -i eth0 -o wg0 -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
+iptables -A FORWARD -i eth0 -o wg0 -j DROP
+iptables -A FORWARD -i eth0 -s 192.168.1.0/24 -j DROP
+iptables -A FORWARD -j LOG --log-prefix "FORWARD DROP: "
+iptables -A FORWARD -j DROP
+
+# OUTPUT
+iptables -A OUTPUT -o lo -j ACCEPT
+iptables -A OUTPUT -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT 
+iptables -A OUTPUT -o wg0 -d 192.168.1.0/24 -j DROP
+iptables -A OUTPUT -o wg0 -j ACCEPT
+iptables -A OUTPUT -o eth0 -d 192.168.1.0/24 -j DROP
+iptables -A OUTPUT -o eth0 -j ACCEPT
+iptables -A OUTPUT -j DROP
+
+#NAT
+iptables -t nat -A POSTROUTING -o eth0 -s 10.7.7.4/32 -j MASQUERADE
+iptables -t nat -A POSTROUTING -o eth0 -s 10.7.7.7/32 -j MASQUERADE
+
+#iptables -A INPUT -i eth0 -s 192.168.1.0/24 -j LOG --log-prefix "LAN BLOCK INPUT: "
+#iptables -A INPUT -i wg0 -s 192.168.1.0/24 -j LOG --log-prefix "LAN BLOCK WG INPUT: "
+
+#make it executable
+chmod +x ~/iptables-mimiserver.sh
+
+#set default drop policy
+iptables -P INPUT DROP
+iptables -P FORWARD DROP
+iptables -P OUTPUT DROP
+
+#DISABLE UFW
+sudo ufw disable
+sudo ufw status
+#make rules persist after reboot
+sudo apt install iptables-persistent
+#verify
+sudo nano /etc/iptables/rules.v4
+#test manual reload
+sudo iptables-restore < /etc/iptables/rules.v4
+#added this to /etc/apache2/sites-available/nextcloud.conf
+<Directory /var/www/nextcloud/data/>
+    Require all denied
+</Directory>
+
+______________________________SUCCESS___________________________________
+#---------------------
+# MIMISERVER BROKEN
+#---------------------
+# After leaving the pi4 off for a few days i suspect the time drifted
+# i was still able to ssh in from izzy and could ping 1.1.1.1 but dig
+# returned SERVFAIL. timedatectl showed system synchronized: no and the 
+# fix online says to sudo timedatectl set-ntp false then true then restart systemd-timesyncd but after doing that it still showed system clock synchronized: no
+# because timedatectl show-timesync --all returned an empty server field, will try to add ntp server's literal IP addresses to 
+sudo nano /etc/systemd/timesyncd.conf
+# ADD this line under [Time] cloudflare's ntpservers
+NTP=162.159.200.1 162.159.200.123
+#-------------
+# THIS WORKED
+#-------------
+
+

@@ -1,0 +1,12 @@
+This project documents my attempt to create a virtual replica of my Raspberry Pi server (mimiserver) using VirtualBox, Docker, and later VMware, both for security testing and for safe upgrade testing.
+
+File Key:
+Screenshots: a few ss with descriptions
+mimilab3.md: raw documentation of mimiserver replica vm
+xubuntu1.md: raw documentation of client/administration vm
+
+
+Explanation/Blog: one of the more attractive fields in IT to me was hacking. i also was concerned since at this point i had a constant open port forwarded to the pi4 rule on my home router. i was learning about vms for the CompTIA a+ so my first instinct was to create a vm replica of mimiserver so that i could test it for security issues and maybe try to hack it. i also had learned about containers and saw that people ran pihole and unbound in docker so i wanted to try that as well.
+I started with VirtualBox and got comfortable with creating vms, configuring nat, bridge, host networking. Then my plan was to simulate a 1:1 replica of mimiserver on my home network being administered by my windows11 laptop. so i created a vm that would simulate my laptop, on a network who's gateway was the host machine, with another vm where i would rebuild mimiserver.
+	Using docker for the first time was very confusing and i failed to get both pihole and unbound to work in containers. i was however able to get pihole containerized and then settled for running unbound on the host.i ended up with an almost exact replica of mimiserver the only difference being pihole was in a container.
+	This is around when i started to discover what security and pen testing were and how much i didn't know/had to learn before even beginning to try basic things, that modern applications are hardened and not easy to use as penetration testing targets. i was bummed out that i had gone through all the work of creating an environment where i could try hacking my server but then realized that i had created a perfect test environment for deploying updates and upgrades to my real mimiserver! i continued to use this environment to test any new services or apt upgrades until I sadly decided to let go of mimiserver recently in lieu of a new network architecture.

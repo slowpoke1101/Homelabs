@@ -1,0 +1,1071 @@
+ with the same zero trust rules and services tailored for one user and 2 devices for now(me the user with izzy and lons) with iptables instead of ufw this time; mimiserver as a vpn gateway(all traffic from lons and izzy goes through), everything behind wireguard; we set it up so that my home router has a port open xxxxx pointing to the dhcp reservation for mimiserver at 192.168.1.x. instead of only lons and izzy being able to access wg0 we decided to let 10.7.7.0/29(5clients) access wireguard where pihole(docker)+unbound(host) can serve them dns, where apache/nextcloud can serve my photos LAN CANNOT BE AFFECTED. i want the only entry point to mimiserver to be through wg0, eth0 being only a one way path to the my router and internet, no LAN noise. nextcloud will have to import the selfsigned thing that we signed with izzy so that izzy and lons's nextcloud clients trusted the site(i have those saved). i would like to remove ssh pw login and use ssh keys for lons(terminus) and izzy(powershell).
+
+ubuntu server 24 lts (vbox settings:2gb ram 2 cores 20gb disk 128mb videomemory, EFI-off)
+English
+ubuntu server
+dhcp automatic
+no proxy address
+mirror address default(hit enter)
+use an entire disk yes
+DO NOT set up this disk as an LVM group
+your name: marco
+your server's name: mimiserver
+username: marco
+password: daddylongleg
+skip ubuntu pro
+install openssh server YES
+skip snaps(sandboxed packages stored in /snap with their own dependencies)
+reboot
+sudo apt update && upgrade -y
+
+INSTALL BASELINE SERVER TOOLS::::
+curl, wget
+htop, net-tools, traceroute
+ca-certificates
+software-properties-common
+zip, unzip
+git
+sudo apt install -y curl wget git htop net-tools traceroute unzip zip ca-certificates software-properties-common
+
+Adapter 1 — NAT (internet)
+Already enabled by default.
+Adapter 2 — Internal Network (labnet)
+This is your “virtual VLAN” for VM ↔ VM communication.
+In VirtualBox:
+- Settings → Network → Adapter 2
+- Enable
+- Attached to: Internal Network
+- Name: labnet
+
+VirtualBox → Settings → Network → Adapter 1 → Advanced → Port Forwarding
+Add:
+Name: SSH
+Protocol: TCP
+Host IP: 127.0.0.1
+Host Port: 2223
+Guest IP:
+Guest Port: 22
+ssh -p 2224 marco@127.0.0.1
+SUCCESSS
+:::::::::::
+::snapshot:
+:::::::::::
+sudo nano /etc/ssh/sshd_config
+permitemptypasswords no
+permitrootlogin no
+
+sudo nano /etc/netplan/02-labnet.yaml
+network:
+  version: 2
+  ethernets:
+    enp0s8:
+      addresses:
+        - 192.168.1.146/24
+sudo chmod600 /etc/netplan/02-labnet.yaml
+sudo netplan apply
+SUCCESSSS
+:::::::::::::
+::DNS FIXED:::
+::::::::::::::
+#this makes rules persist on reboot
+sudo apt install iptables-persistent
+
+IPTABLES
+#this allows loopback traffic for local dns,services,systemd-resolved,unbound,pihole
+sudo iptables -A INPUT -i lo -j ACCEPT
+#if connection is already allowed and active, let the return traffic through
+sudo iptables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+----------------------------
+#allows izzy to ssh via nat portforwarding
+sudo iptables -A INPUT -p tcp --dport 22 -s 10.0.2.2 -j ACCEPT
+#allows joe to ssh via labnet
+sudo iptables -A INPUT -p tcp --dport 22 -s 192.168.1.75 -j ACCEPT
+#if it wasn't explicitly allowed above, deny it(this is locking everything down, only conntrack connections loopback and ssh are allowed)
+sudo iptables -A INPUT -j DROP
+sudo apt install netfilter-persistent
+sudo netfilter-persistent save
+sudo netfilter-persistent reload
+REBOOT... IT'S NOT PERSISTING AFTER REBOOT :((
+# this drops the rules in that /etc/ directory
+sudo sh -c "iptables-save > /etc/iptables/rules.v4"
+# this is policy is not a 'rule' it is still compared against the packet after rules first and is a fallback to -A INPUT -j DROP
+sudo iptables -P INPUT DROP
+:::::::::::::::::::
+::POST IPTABLES1:::
+;;;;;;;;;;;;;;;;;;;
+#DISABLE IPV6
+sudo nano /etc/sysctl.d/99-disable-ipv6.conf
+net.ipv6.conf.all.disable_ipv6 = 1
+net.ipv6.conf.default.disable_ipv6 = 1
+net.ipv6.conf.lo.disable_ipv6 = 1
+net.ipv6.conf.enp0s3.disable_ipv6 = 1
+net.ipv6.conf.enp0s3.accept_ra = 0
+net.ipv6.conf.enp0s3.autoconf = 0
+net.ipv6.conf.enp0s8.disable_ipv6 = 1
+net.ipv6.conf.enp0s8.accept_ra = 0
+net.ipv6.conf.enp0s8.autoconf = 0
+sudo sysctl --system
+#ADJUST THE YAML PER INTERFACE(enp0s3, enp0s8) ADD:
+dhcp6: false
+accept-ra: false
+link-local: []
+sudo netplan apply
+REBOOT
+ip a | grep inet6
+sudo systemctl --failed
+-----------------------
+#DISABLE SERVICES LISTENING ON LAN(none other than systemd-resolve and ssh on this install)
+::::::::::::::::::::::
+::IPV6 DISABLED:::::::
+::::::::::::::::::::::
+#WIREGUARRRRRD
+sudo apt update
+sudo apt install wireguard
+#GENERATE SERVER KEYS
+sudo sh -c "wg genkey | tee /etc/wireguard/server_private.key | wg pubkey > /etc/wireguard/server_public.key"
+#check
+sudo cat /etc/wireguard/server_private.key
+sudo cat /etc/wireguard/server_public.key
+sudo chmod 600 /etc/wireguard/server_private.key
+#create wg0.conf
+sudo nano /etc/wireguard/wg0.conf
+[Interface]
+Address = 10.7.7.2/29
+ListenPort = 8443
+PrivateKey = <server_private_key>
+
+# NAT for VPN clients
+PostUp   = iptables -t nat -A POSTROUTING -s 10.7.7.0/29 -o enp0s3 -j MASQUERADE
+PostDown = iptables -t nat -D POSTROUTING -s 10.7.7.0/29 -o enp0s3 -j MASQUERADE
+#enable port forwarding
+echo "net.ipv4.ip_forward=1" | sudo tee /etc/sysctl.d/99-wireguard.conf
+sudo sysctl --system
+#expected output net.ipv4.ip_forward = 1
+#add firewall rules for wireguard
+sudo iptables -A INPUT -p udp --dport 8443 -j ACCEPT
+sudo iptables -A INPUT -i wg0 -j ACCEPT
+#then save
+sudo sh -c "iptables-save > /etc/iptables/rules.v4" 
+sudo wg-quick up wg0
+#check iptables order for -A INPUT -j DROP
+ip a show wg0
+sudo wg show
+sudo iptables -t nat -S POSTROUTING
+sudo iptables -S INPUT
+#MUST DELETE AND APPEND
+sudo iptables -L INPUT --line-numbers
+sudo iptables -D INPUT (#LINE NUMBER)
+sudo iptables -A INPUT -j DROP
+sudo sh -c "iptables-save > /etc/iptables/rules.v4"
+----------------
+#CREATE CLIENT KEYS(JoeXFCE4)
+#ON CLIENT
+sudo apt update
+sudo apt install wireguard
+wg genkey | tee ~/joe_private.key | wg pubkey > ~/joe_public.key
+#verify
+cat ~/joe_private.key
+cat ~/joe_public.key
+----------------
+#ADD CLIENT-PEER TO WG0(mimilab3)
+sudo nano /etc/wireguard/wg0.conf
+[Peer]
+# JoeXFCE
+PublicKey = <joe_public_key>
+AllowedIPs = 10.7.7.6/32
+#apply
+sudo wg-quick down wg0
+sudo wg-quick up wg0
+sudo systemctl enable wg-quick@wg0
+--------------------
+#BUILD CLIENT CONFIG(JoeXFCE4)
+sudo nano /etc/wireguard/wg0.conf
+[Interface]
+Address = 10.7.7.6/29
+PrivateKey = <joe_private_key>
+DNS = 1.1.1.1 <10.7.7.1 worked in this case>
+
+[Peer]
+PublicKey = <server_public_key>
+Endpoint = <LAN or PUBLIC IP>:8443
+AllowedIPs = 0.0.0.0/0
+PersistentKeepalive = 25
+
+#Bring up wg on CLIENT
+sudo wg-quick up wg0
+-------------------
+#####################################################################
+#VIRTUALBOX SPECIFIC
+#VirtualBox Manager → mimilab3 → Settings → Network → Adapter 1 (NAT) → Advanced → Port Forwarding
+#Name: WG8443 Protocol: UDP HostIP: 127.0.0.1 HOSTport: 8443 GuestIP: 10.0.2.15 GuestPORT:8443
+######################################################################
+
+:::::::::::::::::::::::
+::POST-wg0:::::::::::::
+:::::::::::::::::::::::
+#UNBOUUUNDDDD
+sudo apt update
+sudo apt install unbound
+sudo systemctl stop unbound
+sudo nano /etc/unbound/unbound.conf.d/pi-hole.conf
+server:
+    verbosity: 0
+    interface: 127.0.0.1
+    port: 5335
+    do-ip4: yes
+    do-ip6: no
+    do-udp: yes
+    do-tcp: yes
+
+    # Security and privacy
+    harden-glue: yes
+    harden-dnssec-stripped: yes
+    use-caps-for-id: yes
+    hide-identity: yes
+    hide-version: yes
+    qname-minimisation: yes
+
+    # Performance and stability
+    prefetch: yes
+    prefetch-key: yes
+
+    # DNSSEC
+    auto-trust-anchor-file: "/var/lib/unbound/root.key"
+
+    # Cache
+    msg-cache-size: 50m
+    rrset-cache-size: 100m
+
+    # Access control (localhost only)
+    access-control: 127.0.0.0/8 allow
+
+sudo systemctl start unbound
+sudo ss -tulnp | grep 5335
+dig @127.0.0.1 -p 5335 cloudflare.com
+
+sudo mv /etc/unbound/unbound.conf /etc/unbound/unbound.conf.bak
+sudo nano /etc/unbound/unbound.conf
+server:
+    include: "/etc/unbound/unbound.conf.d/*.conf"
+#change permissions
+sudo chown root:root /etc/unbound/unbound.conf
+sudo chmod 644 /etc/unbound/unbound.conf
+sudo systemctl restart unbound
+sudo ss -tulnp | grep unbound
+dig @127.0.0.1 -p 5335 cloudflare.com
+
+# CHANGE MAIN INTERNET INTERFACE(enp0s3) YAML
+link-local: [ipv6]
+#VIRTUALBOX SPECIFIC(until pihole install)
+sudo nano /etc/netplan/50-cloud-init.yaml
+nameservers:
+  addresses: [10.0.2.3]
+sudo netplan apply
+sudo systemctl restart systemd-resolved
+#confirm full chain(ping 1.1.1.1 cloudflare.com will always sent udp#53)
+dig @127.0.0.1 -p 5335 cloudflare.com
+#########after reboot trust anchor file corrupt(this is the fix)
+sudo apt install unbound-anchor
+sudo rm /var/lib/unbound/root.key
+sudo unbound-anchor -a /var/lib/unbound/root.key
+sudo chown unbound:unbound /var/lib/unbound/root.key
+sudo chmod 644 /var/lib/unbound/root.key
+#########problem was pi-hole.conf and root-trust-anchor-file.conf both contain 
+#auto-trust-anchor-file: "/var/lib/unbound/root.key" so we removed that line from
+#/etc/unbound/unbound.conf.d/pi-hole.conf
+#we did this because the system will autoupdate root-trust-anchor-file.conf and not 
+#the entry in pi-hole.conf
+sudo unbound-checkconf
+sudo systemctl start unbound
+sudo systemctl status unbound
+dig @127.0.0.1 -p 5335 cloudflare.com
+:::::::::::::::::::::::
+::POST-unbound ::::::::
+:::::::::::::::::::::::
+#DOOCKERRRRR
+#REMOVE GHOSTS
+#install required packages so apt updates appropriately
+sudo apt remove docker docker.io containerd runc
+sudo apt update
+sudo apt install ca-certificates curl gnupg
+#add docker's official gpg key
+sudo install -m 0755 -d /etc/apt/keyrings
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg | \
+sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+sudo chmod a+r /etc/apt/keyrings/docker.gpg
+#add docker's official repository
+echo \
+  "deb [arch=$(dpkg --print-architecture) \
+  signed-by=/etc/apt/keyrings/docker.gpg] \
+  https://download.docker.com/linux/ubuntu \
+  $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
+  sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+sudo apt update
+#install
+sudo apt install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+sudo systemctl status docker
+SUCCESS
+:::::::::::::::::::
+::POST-Docker::::::
+:::::::::::::::::::
+#create pihole directory
+sudo mkdir -p /srv/pihole/etc-pihole
+sudo mkdir -p /srv/pihole/etc-dnsmasq.d
+sudo mkdir -p /srv/pihole/logs
+#create pi-hole docker composefile, defines pihole container
+#port it exposes(only on 127.0.0.1)
+#volumes that map to /srv/pihole and upstream dns
+sudo nano /srv/pihole/docker-compose.yml
+version: "3.9"
+
+services:
+  pihole:
+    image: pihole/pihole:latest
+    container_name: pihole
+    restart: unless-stopped
+
+    # Bind DNS ONLY to loopback for maximum privacy
+    # Web UI reached at http://127.0.0.1:8080/admin
+    ports:
+      - "127.0.0.1:53:53/tcp"
+      - "127.0.0.1:53:53/udp"
+      - "127.0.0.1:8080:80/tcp"
+
+    environment:
+      TZ: "America/Chicago"
+      DNSMASQ_LISTENING: "local"
+      PIHOLE_DNS_: "127.0.0.1#5335"
+      DNSSEC: "false"
+
+    volumes:
+      - /srv/pihole/etc-pihole:/etc/pihole
+      - /srv/pihole/etc-dnsmasq.d:/etc/dnsmasq.d
+      - /srv/pihole/logs:/var/log/pihole
+
+    cap_add:
+      - NET_ADMIN
+
+#bring up pihole
+#move into directory
+cd /srv/pihole
+sudo docker compose up -d
+sudo docker ps
+sudo docker logs pihole | grep random
+JMNTtXXO
+ssh -L 8080:127.0.0.1:8080 marco@10.7.7.2
+http://127.0.0.1:8080/admin
+:::::::::::::::::::
+:::POST-PiHole1:::::
+:::::::::::::::::::
+#CHANGE MIMILAB3 system DNS to pihole
+sudo nano /etc/netplan/
+#CHANGE-ADD nameservers: [127.0.0.1]
+sudo netplan apply
+#######FAIL#######
+#THIS WAS AN EFFORT TO get pihole to listen on both loopback and 10.7.7.2#53 because joe now looks to 10.7.7.2#53 for dns but fails
+#fixed below, joe was configured correctly looking to 10.7.7.2 for dns that's why dig failed when connected to wg0
+#this was because pihole was listening on 127.0.0.1 and only reachable by the host, below we fixed pihole to listen on 
+#0.0.0.0:53 and now if you remove joe from enp0s3 the default route is 10.7.7.2 and internet is restored on wg0
+#CHANGE-ADD wireguard client configs DNS = 10.7.7.2<server wg ip>
+#CHANGE docker-compose.yml TO LISTEN ON 10.7.7.2#53 as well as loopback
+#sudo nano /srv/pihole/docker-compose.yml
+#ports:
+#  - "127.0.0.1:53:53/tcp"
+#  - "127.0.0.1:53:53/udp"
+#  - "10.7.7.2:53:53/tcp"
+#  - "10.7.7.2:53:53/udp"
+#cd /srv/pihole/
+#sudo docker compose down
+#sudo docker compose up -d
+#######################FAIL-FIXED##################
+#undo previous FAIL and change pihole from bridged to host network
+#this will make pihole in docker behave like a host app
+sudo nano /srv/pihole/docker-compose.yml
+version: "3.9"
+
+services:
+  pihole:
+    image: pihole/pihole:latest
+    container_name: pihole
+    restart: unless-stopped
+
+    network_mode: host
+
+    environment:
+      TZ: "America/Chicago"
+      DNSMASQ_LISTENING: "local"
+      PIHOLE_DNS_: "127.0.0.1#5335"
+      DNSSEC: "false"
+
+    volumes:
+      - /srv/pihole/etc-pihole:/etc/pihole
+      - /srv/pihole/etc-dnsmasq.d:/etc/dnsmasq.d
+      - /srv/pihole/logs:/var/log/pihole
+
+    cap_add:
+      - NET_ADMIN
+
+cd /srv/pihole
+sudo docker compose down
+sudo docker compose up -d
+dig @127.0.0.1 cloudflare.com
+dig @10.7.7.2 cloudflare.com
+dig @10.7.7.2 dnssec-failed.org
+dig @10.7.7.2 doubleclick.net
+################################FAIL-FIXED###########
+#will switch vbox settings to bridged instead of host only
+#this will give mimilab3 a real ip on home lan to fully mimic the rehearsal
+#fullly remove vbox reboot windows reinstall with bridged adapter
+#change netplan dns back to nameservers: [127.0.0.1]
+#remove iptables rule for sudo iptables -A INPUT -p tcp --dport 22 -s 10.0.2.2 -j ACCEPT
+#replace with -A INPUT -p tcp --dport 22 -s 192.168.1.76 -j ACCEPT
+
+#IN DOCKER COMPOSE YAML ADD
+environment:
+  TZ: "America/Chicago"
+  DNSMASQ_LISTENING: "all"
+  INTERFACE: "wg0"
+  PIHOLE_DNS_: "127.0.0.1#5335"
+  DNSSEC: "false"
+
+sudo nano /etc/systemd/resolved.conf
+DNS=127.0.0.1
+FallBackDNS=
+sudo nano /etc/systemd/network/10-enp0s3-dns.conf
+[Match]
+Name=eth0
+[Network]
+DNS=127.0.0.1
+Domains=~.  #THis routes all domains
+sudo nano /etc/netplan/50-cloud-init.yaml
+dhcp4-overrides:
+    use-dns: false
+############################this finally changed dig cloudflare.com from
+#sudo nano /etc/resolv.conf#127.0.0.53:53 to 127.0.0.1:53 not permanent
+#nameserver 127.0.0.1      #
+############################
+#THESE NEXT STEPS ARE KEY
+sudo systemctl disable systemd-resolved --now
+sudo rm /etc/resolv.conf
+echo "nameserver 127.0.0.1" | sudo tee /etc/resolv.conf
+sudo systemctl enable systemd-resolved
+reboot
+sudo systemctl disable systemd-resolved
+#THIS WORKED SOMEHOW
+#DO THIS AGAIN
+#IN DOCKER COMPOSE YAML ADD
+environment:
+  TZ: "America/Chicago"
+  DNSMASQ_LISTENING: "all"
+#  INTERFACE: "wg0"
+  PIHOLE_DNS_: "127.0.0.1#5335"
+  DNSSEC: "false"
+###########THIS finally matched the real mimiserver with pihole listening everywhere on 0.0.0.0:53 instead of 127.0.0.1:53
+#while unbound listening on 127.0.0.1:5335
+#HOST IS CONFIGURED TO LISTEN/FALLBACK TO 127.0.0.1 FOR DNS
+
+
+after we set docker-compose to only look to 127.0.0.1:53 and 10.7.7.2:53 for dns we changed pihole docker-compose to listen on all. full tunnel complete. 
+
+now pihole listens on 0.0.0.0:53 and 127.0.0.1:53 is gone, but we configured mimiserver to fallback to 127.0.0.1:53 for all dns, check if we must somehow enable pihole to both listen on 0.0.0.0:53 AND 127.0.0.1:53
+
+
+JAN 14 2026
+make iptables rules for pihole/unbound
+#INPUT#
+sudo -A INPUT -i eth0 -s 192.168.1.0/24 -j DROP
+sudo -I INPUT -i wg0 -s 10.7.7.0/29 -j ACCEPT
+#FORWARD#
+sudo iptables -A FORWARD -i eth0 -o wg0 -j DROP
+sudo iptables -A FORWARD -i wg0 -o eth0 -d 192.168.1.0/24 -j DROP
+sudo iptables -I FORWARD -i wg0 -o eth0 -s 10.7.7.0/29 -j ACCEPT
+sudo iptables -A FORWARD -j DROP
+
+# Allow loopback
+-A INPUT -i lo -j ACCEPT
+# Allow established connections
+-A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+# Allow SSH from IZZY
+-A INPUT -p tcp --dport 22 -s 192.168.1.76 -j ACCEPT
+# Allow WireGuard
+-A INPUT -p udp --dport 8443 -j ACCEPT
+# Allow VPN clients to reach services on mimilab3 (optional)
+-A INPUT -i wg0 -s 10.7.7.0/29 -j ACCEPT
+# Block LAN from reaching mimilab3
+-A INPUT -i enp0s3 -s 192.168.1.0/24 -j DROP
+# Default deny
+-A INPUT -j DROP
+
+# Allow established connections
+-A FORWARD -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+# Allow VPN clients to reach the internet
+-A FORWARD -i wg0 -o enp0s3 -s 10.7.7.0/29 -j ACCEPT
+# Block LAN → VPN
+-A FORWARD -i enp0s3 -o wg0 -j DROP
+# Block VPN → LAN
+-A FORWARD -i wg0 -o enp0s3 -d 192.168.1.0/24 -j DROP
+# Default deny
+-A FORWARD -j DROP
+
+JAN 15
+####INSTALL SERVER TOOLS+disable services(copied from REAL mimi)###########
+#DISABLE LAST SERVICE AVAHI DAEMON
+sudo systemctl stop avahi-daemon.service
+sudo systemctl stop avahi-daemon.socket
+sudo systemctl disable avahi-daemon.service
+sudo systemctl disable avahi-daemon.socket
+sudo systemctl mask avahi-daemon.service
+sudo systemctl mask avahi-daemon.socket
+sudo ss -tulpen | grep avahi
+systemctl list-unit-files | grep avahi
+#AVAHI NOT ENABLED(no need)
+#install server tools
+sudo apt update
+sudo apt upgrade #successful
+sudo apt install iftop nethogs bmon rkhunter
+#CHOSE 'local only' for POSTFIX config options after install
+#CHOSE 'localhost' for next screen
+#if necessary after rkhunter install
+#sudo dpkg-reconfigure postfix
+#manually update rkhunter
+#only run propupd after trusted updates, system config changes, package installs
+sudo rkhunter --propupd
+sudo nano /etc/rkhunter.conf
+WEB_CMD=/bin/false to WEB_CMD=curl
+sudo rkhunter --update
+sudo rkhunter --check
+#for checking /dev for suspicious files
+ls -lR /dev | grep '^-' | grep -v 'null\|zero\|random\|urandom'
+#Disable ssh permitrootlogin = no
+sudo nano /etc/ssh/sshd_config.d/50-cloud-init.conf
+sudo systemctl reload sshd
+sudo apt install logwatch
+sudo logwatch --detail low --service all --range today
+sudo iftop -i wg0/eth0
+sudo nethogs <wg0>#optional
+bmon
+
+#check listeners bound to eth0
+sudo ss -tunlp | grep -v 127.0.0.1
+#confirm pihole+unbound are only bound only to wg0 or localhost
+#check for rogue services: avahi, cups, samba, nginx, cockpit, rpcbind
+sudo systemctl list-units --type=service | grep running
+#these services are okay
+cron. dbus. fail2ban. getty@tty1. irqbalance. MariaDB. networkd-dispatcher. php*-fpm. pihole-FTL. redis-server. rsyslog. ssh. systemd-journald. systemd-logind. systemd-networkd. systemd-resolved. systemd-timesyncd. systemd-udevd. unbound. user@1000. 
+#found unnecessary services running, will disable
+#leaving apache2 and Bluetooth/hciuart on
+sudo systemctl disable --now postfix
+sudo systemctl disable --now snapd
+sudo systemctl disable --now netplan-wpa-wlan0
+sudo systemctl disable --now wpa_supplicant
+#sudo ss -tunp SHOWS ESTABLISHED CONNECTIONS
+###############   END  COPY   ############################(not all steps were necessary on mimilab3)
+
+#ADD FIREBOG BLOCKLISTS change dns to 127.0.0.1#5335 AND REBOOT
+########################################################################
+#############POST PIHOLE+UNBOUND################################
+
+JAN 18
+########APACHE2
+sudo apt update
+sudo apt install apache2
+sudo systemctl status apache2
+#apache2 failed to load, lighttpd in docker is occupying ports 443 and 80, so changed docker-compose.yml added these lines under environment
+FTLCONF_webserver_port: '8080o'
+FTLCONF_webserver_api_password: 'boris'
+FTLCONF_dns_listeningMode: 'ALL'
+FTLCONF_dns_upstreams: '127.0.0.1#5335'1
+#this works for network_mode: host
+sudo ss -tulnp
+sudo systemctl restart apache2
+sudo systemctl status apache2
+curl http://localhost
+#apache only listening on port 80 because it doesn't enable https by default
+sudo a2enmod ssl
+sudo systemctl restart apache2
+sudo a2ensite default-ssl
+sudo systemctl reload apache2
+#there is no a2dismod http so must redirect port 80
+sudo a2dissite 000-default
+sudo systemctl reload apache2
+sudo nano /etc/apache2/sites-available/redirect.conf
+<VirtualHost *:80>
+    Redirect permanent / https://10.7.7.2/
+</VirtualHost>
+sudo a2ensite redirect
+sudo systemctl reload apache2
+
+#####ENABLE PHP
+sudo apt install php php-fpm php-mysql php-xml php-gd php-curl php-zip php-mbstring php-intl php-bz2 php-imagick php-gmp
+#enable in apache
+sudo a2enmod proxy_fcgi setenvif
+sudo a2enconf php*-fpm
+sudo systemctl reload apache2
+#test
+echo "<?php phpinfo(); ?>" | sudo tee /var/www/html/info.php
+#visit https://10.7.7.2/info.php from joe
+
+#######MariaDB
+sudo apt install mariadb-server
+#secucre the MariaDB installation
+sudo mysql_secure_installation
+- Switch to unix_socket authentication? N
+- Set root password? N (Ubuntu already uses socket auth)
+- Remove anonymous users? Y
+- Disallow root login remotely? Y
+- Remove test database? Y
+- Reload privilege tables? Y
+#create the database and user for nextcloud
+sudo mysql
+CREATE DATABASE nextcloud CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;
+CREATE USER 'ncuser'@'localhost' IDENTIFIED BY 'YOURPASSWORD';#pw=boris
+GRANT ALL PRIVILEGES ON nextcloud.* TO 'ncuser'@'localhost';
+FLUSH PRIVILEGES;
+EXIT;
+
+###########download+extract nextcloud
+###########set correct permissions
+###########prepare apache for nextcloud
+
+########NEXTCLOUD
+#download and move
+cd /tmp
+wget https://download.nextcloud.com/server/releases/nextcloud-31.0.13.tar.bz2
+sudo apt install bzip2
+tar -xjf nextcloud-31.0.13.tar.bz2
+sudo mv nextcloud /var/www/
+#set permissions for www-data
+sudo chown -R www-data:www-data /var/www/nextcloud
+sudo find /var/www/nextcloud/ -type d -exec chmod 750 {} \;
+sudo find /var/www/nextcloud/ -type f -exec chmod 640 {} \;
+#create virtual host
+sudo nano /etc/apache2/sites-available/nextcloud.conf
+<VirtualHost *:443>
+    ServerName 10.7.7.2
+
+    DocumentRoot /var/www/nextcloud
+
+    <Directory /var/www/nextcloud>
+        Require all granted
+        AllowOverride All
+        Options FollowSymLinks MultiViews
+    </Directory>
+
+    SSLEngine on
+    SSLCertificateFile /etc/ssl/certs/ssl-cert-snakeoil.pem
+    SSLCertificateKeyFile /etc/ssl/private/ssl-cert-snakeoil.key
+
+    ErrorLog ${APACHE_LOG_DIR}/nextcloud_error.log
+    CustomLog ${APACHE_LOG_DIR}/nextcloud_access.log combined
+</VirtualHost>
+#enable site
+sudo a2ensite nextcloud.conf
+#enable modules nextcloud depends on
+sudo a2enmod rewrite headers env dir mime
+sudo systemctl reload apache2
+#disable default site
+sudo a2dissite default-ssl.conf
+sudo systemctl reload apache2
+#visit https://10.7.7.2/ from joe
+#fill out in install info, pw=boris
+#####################nextcloud installed successfully
+##POST NEXTCLOUD1####
+#####################
+
+##NEXTCLOUD TUNING
+sudo apt install php-gd php-xml php-zip php-curl php-mbstring php-intl php-bcmath php-gmp php-imagick
+sudo systemctl restart apache2
+sudo apt install php-apcu
+sudo nano /etc/php/8.3/mods-available/apcu.ini
+extension=apcu.so
+apc.enable_cli=1
+sudo phpenmod apcu
+sudo systemctl restart apache2
+sudo nano /var/www/nextcloud/config/config.php
+  'memcache.local' => '\\OC\\Memcache\\APCu',
+sudo nano /etc/apache2/site-available/nextcloud.conf
+Redirect 301 /.well-known/carddav /remote.php/dav
+Redirect 301 /.well-known/caldav /remote.php/dav
+sudo systemctl reload apache2
+sudo nano /etc/php/8.3/apache2/php.ini
+memory_limit = 128M -> 512M
+sudo systemctl restart apache2
+sudo nano /var/www/nextcloud/config/config.php
+'maintenance_window_start' => 2,
+'memcache.locking' => '\\OC\\Memcache\\APCu',
+'default_phone_region' => 'US',
+sudo -u www-data php /var/www/nextcloud/occ maintenance:repair --include-expensive
+sudo nano /etc/apache2/sites-available/nextcloud.conf
+Header always set Strict-Transport-Security "max-age=15552000; includeSubDomains"
+sudo systemctl reload apache2
+sudo apt install libmagickcore-6.q16-6-extra
+identify -list format | grep SVG
+sudo systemctl restart apache2
+
+
+######MARIA DB TUNING
+sudo nano /etc/mysql/mariadb.conf.d/50-server.cnf
+[mysqld]
+innodb_buffer_pool_size = 512M #1G
+innodb_log_file_size = 256M
+innodb_flush_method = O_DIRECT
+innodb_flush_log_at_trx_commit = 2
+max_connections = 50 #100
+tmp_table_size = 64M
+max_heap_table_size = 64M
+query_cache_size = 32M #64M
+query_cache_type = 1
+innodb_file_per_table = 1
+####### REDIS
+sudo apt install redis-server php-redis
+sudo nano /var/www/nextcloud/config/config.php
+'memcache.local' => '\\OC\\Memcache\\APCu',
+'memcache.locking' => '\\OC\\Memcache\\Redis',
+'redis' => [
+    'host' => 'localhost',
+    'port' => 6379,
+],
+######## PHP
+sudo nano /etc/php/8.3/apache2/php.ini
+memory_limit = 512M
+upload_max_filesize = 2G
+post_max_size = 2G
+max_execution_time = 360
+max_input_time = 360
+
+opcache.enable=1
+opcache.enable_cli=1
+opcache.memory_consumption=128
+opcache.interned_strings_buffer=16
+opcache.max_accelerated_files=10000
+opcache.validate_timestamps=1
+opcache.revalidate_freq=2
+###### NEXTCLOUD cron jobs
+sudo -u www-data crontab -e
+*/5 * * * * php -f /var/www/nextcloud/cron.php
+0 3 * * * php -f /var/www/nextcloud/occ preview:pre-generate
+#instant previews
+sudo -u www-data php /var/www/nextcloud/occ preview:generate-all
+#run after 48 hours to see if buffer pool is sized correctly
+sudo mysqltuner
+
+----------------------joeXfce4----------------------------
+#IPV6 queries still being requested and replied to but i guess this is okay
+#since ipv6 is disabled no ipv6 requests will be sent
+#sudo docker exec -it pihole pihole -t is constantly querying common sites
+#while firefox is open (vogue, nbcnews, allrecipies, etc.)
+#to quiet the logs in FIREFOX go to about:config and set these to false
+network.dns.disablePrefetch - true
+network.prefetch-next
+network.predictor.enabled
+network.predictor.enable-prefetch
+browser.urlbar.suggest.topsites
+browser.urlbar.suggest.trending
+browser.urlbar.suggest.quicksuggest.sponsored
+browser.urlbar.suggest.quicksuggest.nonsponsored
+browser.newtabpage.activity-stream.feeds.topsites
+browser.newtabpage.activity-stream.feeds.section.topstories
+browser.newtabpage.activity-stream.showSponsored
+browser.newtabpage.activity-stream.showSponsoredTopSites
+-----------------------------------------------------------
+###############################
+#### POST NEXTCLOUD TUNED#####
+###############################
+
+################### FIREWALL (LAST STEP) ##############################
+NAT MASQUERADE:
+-A POSTROUTING -s 10.7.7.0/29 -o eth0 -j MASQUERADE
+#flush rules
+sudo systemctl stop docker
+sudo wg-quick down wg0
+sudo iptables -F
+sudo iptables -t nat -F
+sudo iptables -t mangle -F
+sudo iptables -X
+#ADD RULES
+sudo wg-quick up wg0
+sudo systemctl start docker
+#verify
+sudo iptables -L -v -n
+sudo iptables -t nat -L -v -n
+
+#RUN SCRIPT WITH SUDO
+#the commands inside the script will inherit root privileges this way
+#otherwise if sudo inside the script requests a password, it might fail
+#SCRIPTING
+#(use this program to interperet the rest of the file)
+#!/bin/bash(run everything below using the bash shell) 
+#!/usr/bin/python3(to run the file with python)
+#!/bin/sh(run everything below with the POSIX shell)
+#
+#(place commands in order to be run)
+#
+#make it executable
+#sudo chmod +x <script.sh>
+
+sudo nano /root/firewall.sh
+#!/bin/bash
+set -e
+
+# INPUT
+iptables -A INPUT -i lo -j ACCEPT
+iptables -A INPUT -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
+iptables -A INPUT -i enp0s3 -p udp --dport 8443 -j ACCEPT
+iptables -A INPUT -i wg0 -s 10.7.7.6 -p udp --dport 53 -j ACCEPT
+iptables -A INPUT -i wg0 -s 10.7.7.6 -p tcp --dport 53 -j ACCEPT
+iptables -A INPUT -i wg0 -s 10.7.7.6 -p tcp --dport 22 -j ACCEPT
+iptables -A INPUT -i wg0 -s 10.7.7.6 -p tcp --dport 443 -j ACCEPT
+iptables -A INPUT -i wg0 -s 10.7.7.6 -p tcp --dport 8080 -j ACCEPT
+iptables -A INPUT -i enp0s3 -s 192.168.1.0/24 -j DROP
+iptables -A INPUT -i wg0 -s 192.168.1.0/24 -j DROP
+iptables -A INPUT -j DROP
+
+# FORWARD
+iptables -A FORWARD -i wg0 -o enp0s3 -s 10.7.7.6 -j ACCEPT
+iptables -A FORWARD -i enp0s3 -o wg0 -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
+iptables -A FORWARD -i enp0s3 -o wg0 -j DROP
+iptables -A FORWARD -i enp0s3 -s 192.168.1.0/24 -j DROP
+iptables -A FORWARD -j DROP
+
+# OUTPUT
+iptables -A OUTPUT -o lo -j ACCEPT
+iptables -A OUTPUT -o docker0 -j ACCEPT
+iptables -A OUTPUT -o enp0s3 -d 192.168.1.0/24 -j DROP
+iptables -A OUTPUT -o wg0 -d 192.168.1.0/24 -j DROP
+iptables -A OUTPUT -o wg0 -j ACCEPT
+iptables -A OUTPUT -o enp0s3 -j ACCEPT
+iptables -A OUTPUT -j DROP
+
+# POLICY (optional)
+#-P INPUT DROP
+#-P FORWARD DROP
+#-P OUTPUT DROP
+sudo chmod +x /root/firewall.sh
+sudo nano /root/apply-firewall.sh
+#!/bin/bash
+# apply-firewall.sh
+# Safely reset iptables, reapply custom rules, restart WireGuard and Docker.
+
+set -e
+
+echo "[+] Stopping Docker..."
+systemctl stop docker
+
+echo "[+] Bringing wg0 down..."
+wg-quick down wg0 || echo "wg0 was not up, continuing..."
+
+echo "[+] Flushing iptables (filter)..."
+iptables t- filter -F
+iptables t- filter -X
+
+echo "[+] Applying custom firewall rules..."
+/root/firewall.sh
+
+echo "[+] Bringing wg0 up..."
+wg-quick up wg0
+
+echo "[+] Starting Docker..."
+systemctl start docker
+
+echo "[+] Done. Current iptables rules:"
+iptables -L -v -n
+iptables -t nat -L -v -n
+sudo chmod +x /root/apply-firewall.sh
+sudo /root/apply-firewall.sh
+
+
+##########################################
+#i think we did this but double check##  #
+net.ipv4.conf.all.rp_filter = 1          #
+net.ipv4.conf.default.rp_filter = 1      #
+net.ipv4.conf.all.accept_redirects = 0   #
+net.ipv4.conf.all.send_redirects = 0     #
+net.ipv4.conf.all.accept_source_route = 0#
+net.ipv4.conf.all.log_martians = 1       #
+#sysctl settings#                        #
+##########################################
+
+######LOGWATCH
+sudo apt update
+sudo apt install logwatch
+#view report manually
+sudo logwatch --detail high --service all --range today
+
+#######FAIL2BAN
+sudo apt update
+sudo apt install fail2ban
+#make jails
+sudo nano /etc/fail2ban/jail.local
+#example ssh jail
+[sshd]
+enabled = true
+port = 22
+filter = sshd
+logpath = /var/log/auth.log
+maxretry = 5
+findtime = 10m
+bantime = 1h
+#jail for tripwire logs, will ban any ip that triggers custom LOG rules
+[iptables-tripwire]sud
+enabled = true
+filter = iptables-tripwire
+logpath = /var/log/syslog
+maxretry = 1
+findtime = 1h
+bantime = 24h
+sudo systemctl restart fail2ban
+#check prisoners
+sudo fail2ban-client status sshd
+#################################
+####### POST FINAL fixes####################
+###################################
+--------------------------------
+------------------TRIP WIRES---BROKEN------
+------------------------------
+JAN 23
+# Drop malformed packets early
+iptables -A INPUT -m conntrack --ctstate INVALID -j DROP
+# Loopback
+iptables -A INPUT -i lo -j ACCEPT
+# Established/related
+iptables -A INPUT -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
+# Rate-limit WireGuard handshake attempts, stop ppl spamming wg port
+iptables -A INPUT -i enp0s3 -p udp --dport 8443 -m limit --limit 10/second --limit-burst 20 -j ACCEPT
+iptables -A INPUT -i enp0s3 -p udp --dport 8443 -j DROP
+# Tripwire: someone is scanning ports, lan device is probing mimiserver
+iptables -A INPUT -i enp0s3 -s 192.168.1.0/24 -j LOG --log-prefix "ALERT: BRO SOMEONE IS PROBING FROM LAN "
+# Tripwire: someone is spoofing peer or brute force wg
+iptables -A INPUT -i wg0 ! -s 10.7.7.6 -j LOG --log-prefix "ALERT: BRO SOMEONE IS SPOOFING A WG CLIENT!"
+# Your normal allow rules
+iptables -A INPUT -i enp0s3 -p udp --dport 8443 -j ACCEPT
+iptables -A INPUT -i wg0 -s 10.7.7.6 -p udp --dport 53 -j ACCEPT
+iptables -A INPUT -i wg0 -s 10.7.7.6 -p tcp --dport 53 -j ACCEPT
+iptables -A INPUT -i wg0 -s 10.7.7.6 -p tcp --dport 22 -j ACCEPT
+iptables -A INPUT -i wg0 -s 10.7.7.6 -p tcp --dport 443 -j ACCEPT
+iptables -A INPUT -i wg0 -s 10.7.7.6 -p tcp --dport 8080 -j ACCEPT
+# Block LAN
+iptables -A INPUT -i enp0s3 -s 192.168.1.0/24 -j DROP
+iptables -A INPUT -i wg0 -s 192.168.1.0/24 -j DROP
+# Block Docker from exposing ports
+iptables -A INPUT -i docker0 -j DROP
+# Final DROP
+iptables -A INPUT -j DROP
+
+
+# Drop malformed packets
+iptables -A FORWARD -m conntrack --ctstate INVALID -j DROP
+# Tripwire: unknown VPN client trying to route
+iptables -A FORWARD -i wg0 ! -s 10.7.7.6 -j LOG --log-prefix "ALERT: BRO SOMEONE TRYING TO FORWARD THROUGH MIMI"
+# Allow Joe → WAN
+iptables -A FORWARD -i wg0 -o enp0s3 -s 10.7.7.6 -j ACCEPT
+# Allow return traffic
+iptables -A FORWARD -i enp0s3 -o wg0 -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
+# Block LAN → VPN
+iptables -A FORWARD -i enp0s3 -o wg0 -j DROP
+# Block LAN → WAN through mimilab
+iptables -A FORWARD -i enp0s3 -s 192.168.1.0/24 -j DROP
+# Final DROP
+iptables -A FORWARD -j DROP
+
+# Loopback
+iptables -A OUTPUT -o lo -j ACCEPT
+# Docker outbound
+iptables -A OUTPUT -o docker0 -j ACCEPT
+# Tripwire: container is misconfigured/compromised
+iptables -A OUTPUT -o docker0 -d 192.168.1.0/24 -j LOG --log-prefix "ALERT: BRO DOCKER TRYING TO HIT LAN "
+# Tripwire: if growing, something is leaking traffic, escape the server, malware
+iptables -A OUTPUT -o enp0s3 -d 192.168.1.0/24 -j LOG --log-prefix "ALERT: BRO enp0s3 TRYING TO REACH LAN "
+# Block outbound to LAN
+iptables -A OUTPUT -o enp0s3 -d 192.168.1.0/24 -j DROP
+# Block outbound to LAN via wg0
+iptables -A OUTPUT -o wg0 -d 192.168.1.0/24 -j DROP
+# Allow WireGuard outbound
+iptables -A OUTPUT -o wg0 -j ACCEPT
+# Allow WAN outbound
+iptables -A OUTPUT -o enp0s3 -j ACCEPT
+# Tripwire: look for dns http random ports, weird destinations ips
+iptables -A OUTPUT -j LOG --log-prefix "ALERT: BRO OUTPUT-DROP "
+# Final DROP
+iptables -A OUTPUT -j DROP
+
+
+#check logs
+#sudo dmesg -w or | grep <string>
+
+table inet filter {
+
+    chain input {
+        type filter hook input priority 0;
+        policy drop;
+
+        # WireGuard client 10.7.7.7
+        iif "wg0" ip saddr 10.7.7.7 udp dport 53 accept
+        iif "wg0" ip saddr 10.7.7.7 tcp dport 53 accept
+        iif "wg0" ip saddr 10.7.7.7 tcp dport 22 accept
+        iif "wg0" ip saddr 10.7.7.7 tcp dport 443 accept
+
+        # WireGuard client 10.7.7.4
+        iif "wg0" ip saddr 10.7.7.4 udp dport 53 accept
+        iif "wg0" ip saddr 10.7.7.4 tcp dport 53 accept
+        iif "wg0" ip saddr 10.7.7.4 tcp dport 22 accept
+        iif "wg0" ip saddr 10.7.7.4 tcp dport 443 accept
+
+        # Loopback
+        iif "lo" accept
+
+        # Established connections
+        ct state established,related accept
+
+        # Allow UDP 8443 on eth0
+        iif "eth0" udp dport 8443 accept
+
+        # LAN isolation
+        iif "eth0" ip saddr 192.168.1.0/24 drop
+        iif "wg0" ip saddr 192.168.1.0/24 drop
+    }
+
+    chain forward {
+        type filter hook forward priority 0;
+        policy drop;
+
+        # Allow WG clients to forward to eth0
+        iif "wg0" ip saddr 10.7.7.4 oif "eth0" accept
+        iif "wg0" ip saddr 10.7.7.7 oif "eth0" accept
+
+        # Allow return traffic
+        iif "eth0" oif "wg0" ct state established,related accept
+
+        # Block LAN
+        iif "eth0" ip saddr 192.168.1.0/24 drop
+    }
+
+    chain output {
+        type filter hook output priority 0;
+        policy drop;
+
+        oif "lo" accept
+        ct state established,related accept
+
+        # Block LAN
+        oif "wg0" ip daddr 192.168.1.0/24 drop
+        oif "eth0" ip daddr 192.168.1.0/24 drop
+
+        # Allow WG and eth0
+        oif "wg0" accept
+        oif "eth0" accept
+    }
+}
+
+table ip nat {
+    chain postrouting {
+        type nat hook postrouting priority 100;
+
+        ip saddr 10.7.7.4 oif "eth0" masquerade
+        ip saddr 10.7.7.7 oif "eth0" masquerade
+    }
+}
+
+
+-----------------TRIPWIRES BROKEN ABANDONDED------------------------
+#I need to check how to remove SSH remote pw login and replace with keys
+#I need to check how to apply my signed CA to nextcloud instance

@@ -1,0 +1,84 @@
+skip updates minimal install
+sudo apt update && sudo apt upgrade -y
+sudo apt install openssh-server ufw fail2ban curl htop neofetch net-tools
+sudo systemctl enable --now ssh
+
+sudo nano /etc/ssh/sshd_config
+PasswordAuthentication yes
+PermitRootLogin no
+
+sudo systemctl restart ssh
+sudo ufw default deny incoming
+sudo ufw default allow outgoing
+sudo ufw allow 22/tcp
+sudo ufw enable
+sudo apt install thunar-archive-plugin xfce4-taskmanager gnome-disk-utility
+sudo apt install firefox
+
+::::::::::::
+::BASELINE1:
+::::::::::::
+GOAL:connect joe-mimi via ssh
+sudo nano /etc/netplan/02-labnet.yaml
+network:
+    version: 2
+    ethernets:
+        enp0s8:
+            addresses:
+                - 192.168.1.75/24
+sudo chmod 600 /etc/netplan/02-labnet.yaml
+sudo chmod 600 /etc/netplan/01-networkmanager.yaml
+sudo netplan apply
+#WIREGUARD
+#CREATE CLIENT KEYS(JoeXFCE4)
+#ON CLIENT
+sudo apt update
+sudo apt install wireguard
+wg genkey | tee ~/joe_private.key | wg pubkey > ~/joe_public.key
+#verify
+cat ~/joe_private.key
+cat ~/joe_public.key
+#BUILD CLIENT CONFIG(JoeXFCE4)
+sudo nano /etc/wireguard/wg0.conf
+[Interface]
+Address = 10.7.7.6/29
+PrivateKey = <joe_private_key>
+DNS = 1.1.1.1 <10.7.7.1 worked in this case>
+
+[Peer]
+PublicKey = <server_public_key>
+Endpoint = <LAN or PUBLIC IP>:8443
+AllowedIPs = 0.0.0.0/0
+PersistentKeepalive = 25
+
+#Bring up wg on CLIENT
+sudo wg-quick up wg0
+::::::::::::::::::::::
+::BASELINE WG0 WORKS::
+::::::::::::::::::::::
+#change wg0.conf DNS = 10.7.7.2
+#IN VIRTUAL BOX DISABLE NETWORK ADAPTER 1
+
+#wireshark showed too many prefetch dns queries so i wanted to silence firefox
+####### FIREFOX TUNING ################
+#sudo docker exec -it pihole pihole -t is constantly querying common sites
+#while firefox is open (vogue, nbcnews, allrecipies, etc.)
+#to quiet the logs in FIREFOX go to about:config and set these to false
+network.dns.disablePrefetch
+network.prefetch-next
+network.predictor.enabled
+network.predictor.enable-prefetch
+browser.urlbar.suggest.topsites
+browser.urlbar.suggest.trending
+browser.urlbar.suggest.quicksuggest.sponsored
+browser.urlbar.suggest.quicksuggest.nonsponsored
+browser.newtabpage.activity-stream.feeds.adsfeed
+browser.newtabpage.activity-stream.feeds.topsites
+browser.newtabpage.activity-stream.feeds.section.topstories
+browser.newtabpage.activity-stream.showSponsored
+browser.newtabpage.activity-stream.feeds.telemetry
+*topsites
+*topstories
+services.sync.prefs.sync.browser.newtabpage.activity-stream.feeds.section.topstories
+services.sync.prefs.sync.browser.newtabpage.activity-stream.feeds.topsites
+browser.newtabpage.activity-stream.showSponsoredTopSites

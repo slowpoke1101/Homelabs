@@ -1,0 +1,807 @@
+DenArea = gateway
+wwwarea = directory server
+yoka = app server
+SciLab = monitoring node
+
+#ON GATEWAY VM
+#created a yaml giving .1 on each adapter interface
+
+++++ 1 +++++ enable ip forwarding
+sudo nano /etc/sysctl.d/99-sysctl.conf
+net.ipv4.ip_forward=1
+sudo sysctl --system
+#turns machine into a router at the kernel level
+
+++++ add routing+ nat rules
+install iptables
+sudo iptables -F    # clears filter
+sudo iptables -t nat -F # clears nat
+sudo iptables -t mangle -F # clears mangle
+sudo iptables -X # clears custom chains
+sudo iptables -P INPUT ACCEPT
+sudo iptables -P FORWARD ACCEPT
+sudo iptables -P OUTPUT ACCEPT
+#allows client-backend
+sudo iptables -A FORWARD -i ens36 -o ens33 -j ACCEPT
+sudo iptables -A FORWARD -i ens33 -o ens36 -j ACCEPT
+#allows management-backend
+sudo iptables -A FORWARD -i ens37 -o ens33 -j ACCEPT
+sudo iptables -A FORWARD -i ens33 -o ens37 -j ACCEPT
+# sends all Netopia traffic out gateway's nat connection to izzy
+sudo iptables -t nat -A POSTROUTING -o ens32 -j MASQUERADE
+sudo apt install iptables-persistent
+sudo sh -c "iptables-save > /etc/iptables/rules.v4"
+
++++++++ install dns dhcp ++++++++++
+++ backend will get dns NO dhcp
+++ client will get dns AND dhcp
+++ management will get dns NO dhcp
+sudo apt update && sudo apt upgrade -y
+sudo apt install dnsmasq
+sudo nano /etc/dnsmasq.conf
+dnsmasq will fail to start on ubuntu server because systemd-resolved is enabled
+sudo systemctl stop systemd-resoled
+sudo systemctl disable systemd-resolved
+when systemd-resolved is disabled ubuntu leaves behind a symlink
+/etc/resolv.conf → /run/systemd/resolve/stub-resolv.conf
+which that points to 127.0.0.53 which ceased to exist after disabling
+sudo rm /etc/resolv.conf
+echo "nameserver 1.1.1.1" | sudo tee /etc/resolv.conf
+echo "nameserver 1.0.0.1" | sudo tee -a /etc/resolv.conf
+sudo systemctl restart dnsmasq
+# -----------------------------
+# Netopia.lan DNS + DHCP config
+# ----------------------------
+# Listen on the router's LAN interfaces
+interface=ens33
+interface=ens36
+interface=ens37
+# Never listen on the NAT interface
+except-interface=ens32
+# -----------------------------
+# DHCP on Client LAN only
+# -------------------------
+dhcp-range=ens36,10.12.12.100,10.12.12.200,12h
+dhcp-option=option:router,10.12.12.1
+dhcp-option=option:dns-server,10.11.11.1
+dhcp-option=option:domain-name,netopia.lan
+# -----------------------------
+# DNS settings
+# ---------------------------
+domain=netopia.lan
+expand-hosts
+bogus-priv
+localise-queries
+# Upstream DNS servers
+server=1.1.1.1
+server=1.0.0.1
+# -----------------------------
+# Hostnames (add as needed)
+# ----------------------------
+address=/gateway.netopia.lan/10.11.11.1
+---------------------
+when you dig from gateway it is OKAY for the server to NOT be 127.0.0.1 and instead be an upstream DNS provider(1.1.1.1 for example) directly if it is the router. this doesn't mean that the dns service isn't working, it just means the router itself doesn't need to use the dns service, it will usually forward out to the internet directly and that's OKAY for now
+++++++++++ test from client vm(build it)+++++++++++
+get whatever client and test dns dhcp
++++++++++++++++++++++++++++++++++++++++++++++++++++
+tested from gutsman success :DD
+++++++++ build directory server +++++++++++++++++++
+rockylinux9.7 minimal
+#freeipa was giving me trouble on ubuntu server, had to pivot to redhat distro
++++++ Disable ipv6 and unnecessary services ++++++++++++++++
++++++ reference Rockyserver2.txt for instructions +++++++++
++++++ skip this, FreeIPA needs ipv6 to be installed +++++++++
+#set static netplan, dnsmasq dhcp does not need to change because the server lan is intentionally static, so we set our own rules on netopia1
+in yaml gateway4 doesn't work you have to add 
+routes: 
+  - to: default 
+    via: <gateway ip>
+#APPENDED: used networkmanager to set static ip, dns, nameserver, gateway
+sudo nmcli connection modify <nic> ipv6.method manual
+#FreeIPA has a requirement before being installed:
+#a static hostname, a static ip, a working dns forwarder, correct /etc/hosts/ entry.
+sudo nano /etc/hosts/
+10.11.11.10   wwwarea.netopia.lan   wwwarea
+#this is required for Kerberos and the CA
+#We will do FreeIPA + DNS as opposed to pointing it to dnsmasq and only handling ldap/kerberos, this is apparently the most realistic.
+sudo dnf update
+sudo dnf install freeipa-server freeipa-server-dns -y
+# this installs ldap Kerberos dns dogtag CA admintools webUI
+sudo ipa-server-install --setup-dns
+#answer questions serverhostname-scilab.netopia.lan domainname-netopia.lan kerberosrealm: Netopia.lan dnsforwarder:10.11.11.1 allow clients to update dns records: yes configure integrated dns: yes configure ntp: yes set passwords ldap root:     ipa admin:
+it says FreeIPA will 
+- Create the DNS zone
+- Create SRV records
+- Create Kerberos realm
+- Create LDAP tree
+- Configure CA
+- Configure NTP
+- Start all services
+after install it says 
+you must make sure these network ports are open:TCP, then UDP
+80, 443 http/https
+389, 636 ldap/ldaps
+88, 464: Kerberos
+----
+88, 464: Kerberos
+53: bind
+123: ntp
+you can now obtain a Kerberos ticket using : kinit admin
+the ticket will allow use of ipa tools and the web interface
+back up CA certs in /root/cacert.p12(p1Z?) passwd is directory root pw
+sudo ipactl status
+# now can add to gateway "if someone asks for Netopia.lan, forward it to FreeIPA at 10.11.11.10" go to gateway vm /etc/dnsmasq.conf
+#add to config
+server=/netopia.lan/10.11.11.10
+sudo systemctl restart dnsmasq
+--
+Clients → Gateway → FreeIPA (for internal)  
+Clients → Gateway → Cloudflare (for external)  
+FreeIPA → Gateway → Cloudflare (for external)
+so FreeIPA dns is only used for internal resolutions, the gateway should not be part of the ldap group, it need's it's own dns(dnsmasq)
+--
+ROCKYLINUX ships with firewalld active so must create rules 
+# can check current rules with
+sudo firewall-cmd --list-services
+sudo firewall-cmd --list-ports
+#enable required ports mentioned at the end of FreeIPA installer
+sudo firewall-cmd --add-port={80,443,389,636,88,464,53}/tcp
+sudo firewall-cmd --add-port={88,464,53,123}/udp
+# add --permanent to persist
+# verify
+#test dns from client
+dig directory.netopia.lan
+#must remove 2 lines from gateway's /etc/dnsmasq.conf for this to work
+#domain=netopia.lan
+#expand-hosts
+dig _kerberos._udp.netopia.lan
+#should return wwwarea and hostmaster showing that it is the authoritative dns server of the netopia.lan zone!
+it works. :)))
+sudo firewall-cmd --reload
+++++ Join Client VM to the domain ++++++
+#on gutsman
+sudo apt install freeipa-client -y
+#freeipa requires client to have an fqdn in the domain/zone
+#change hostname to gutsman-exe.netopia.lan
+#add 127.0.1.1   gutsman-exe.netopia.lan   gutsman-exe
+sudo ipa-client-install --mkhomedir
+domain: netopia.lan server:wwwarea.netopia.lan realm: NETOPIA.LAN adminuser: admin adminpasswd: <password>
+then it will configure sssd Kerberos nss pam ntp dns and enroll the machine.
+we can check web ui https://wwwarea.netopia.lan
+#configure client static dns(this is apparently ok and done irl)
+#disable systemd-resolved and replace /etc/resolv.conf with directory ip
+(optional) add user
+ipa user-add marco --first=Marco --last=User --password
+#add to group
+ipa group-add-member admins --users=marco
+#give admins in DOMAIN sudo rights on clients
+ipa sudorule-add admins-sudo --cmdcat=all --hostcat=all --runasusercat=all --runasgroupcat=all
+#then add the admins group
+ipa sudorule-add-user admins-sudo --groups=admins
+#now admins can 'sudo su -' on any enrolled client
+
+++++++++++++++++++++++++++++++++++++++++++++
++++++++++ build app server ++++++++++++++++
+Create the VM and join it to the network
+Ubuntu Server VM
+Network: VMnet11 (10.11.11.0/24)
+Static IP: 10.11.11.20
+Hostname: yoka.netopia.lan
+#set hostname
+sudo hostnamectl set-hostname yoka.netopia.lan
+#Add to /etc/hosts
+127.0.1.1 yoka.netopia.lan yoka
+#set static DNS to the gateway
+sudo nano /etc/resolv.conf
+nameserver 10.11.11.1
+#Test DNS
+dig wwwarea.netopia.lan
+dig yoka.netopia.lan - THIS WASNT WORKING because i didn't know that you have to add dns records per new host to FreeIPA
+ipa dnsrecord-add netopia.lan yoka --a-ip-address=10.11.11.20
+also add server=/NETOPIA.LAN/10.11.11.10 to gateway's /etc/dnsmasq.conf and did a hard shut off and restart and that fixed the dns
+
+
+Join the Application Server to FreeIPA
+This is where the magic happens.
+apps will be able to authenticate users using:
+- Kerberos
+- LDAP
+- SSSD
+Install the client tools:
+sudo apt install freeipa-client -y
+Run the join:
+sudo ipa-client-install --mkhomedir
+Use:
+- Domain: netopia.lan
+- Server: directory.netopia.lan
+- Realm: NETOPIA.LAN
+- Admin user: admin
+
+Install the Application Stack
+Install Nginx
+sudo apt install nginx -y
+sudo systemctl status nginx
+curl http://localhost
+Install MariaDB
+sudo apt install mariadb-server -y
+#secure the db (standard hardening)
+sudo mysql_secure_installation
+switch to unix socket auth no
+set root passwd yes
+remove anony users yes
+disallow remote root login yes
+remove test db yes
+reload privileges tables yes
+Install PHP-FPM
+sudo apt install php-fpm php-mysql -y
+systemctl status php8.1-fpm
+
+Create a simple internal portal
+This simulates internal “company homepage.”
+sudo nano /var/www/html/index.html
+
+
+
+<h1>Welcome to Netopia Internal Portal</h1>
+<p>Authenticated user: <?php echo $_SERVER['REMOTE_USER']; ?></p>
+
+check to see if http/yoka.netopia.lan@NETOPIA.LAN and host/* are there
+if http not there 
+sudo klist -k /etc/krb5.keytab
+#creates service identity
+ipa service-add HTTP/app01.netopia.lan
+#adds it to app server's keytab
+ipa-getkeytab -s directory.netopia.lan -p HTTP/app01.netopia.lan -k /etc/krb5.keytab
+# we had issues here it would not let us add the http/ key to the keytab. we tried to delete and reassign the keytab to the host but still didn't work. apparently that means the problem is not the service it's the host? so we will try to re-enroll the host cleanly
+#delete host entry on FreeIPA server
+ipa host-del app01.netopia.lan
+#then on app server remove old enrollment and reinstall
+sudo ipa-client-install --uninstall -U
+#this failed here are official redhat wipe instructions
+sudo rm -f /var/lib/ipa-client/sysrestore.state
+sudo rm -rf /etc/ipa
+sudo rm -rf /etc/sssd
+sudo rm -f /etc/krb5.keytab
+sudo rm -f /etc/krb5.conf
+sudo mkdir -p /etc/ipa
+sudo chmod 755 /etc/ipa
+sudo mkdir -p /etc/sssd
+sudo chmod 700 /etc/sssd
+sudo nano /etc/krb5.conf
+[libdefaults]
+  default_realm = NETOPIA.LAN
+  dns_lookup_realm = true
+  dns_lookup_kdc = true
+sudo ipa-client-install --mkhomedir --force-join
+#back on FreeIPA recreate the http/
+ipa service-add HTTP/app01.netopia.lan
+ipa service-add-host HTTP/app01.netopia.lan --hosts=app01.netopia.lan
+# then back on app server fetch try to fetch the keytab(this is what kept failing)
+kinit admin
+ipa-getkeytab -s directory.netopia.lan -p HTTP/app01.netopia.lan -k /etc/krb5.keytab 
+# we opted to skip sso until the end because it would require more digging, we tried every sort of fresh reinstall of everything we could and still it fails to add key to the keytab. moving on skip the next phase 5 and phase 6
+
+🟦 PHASE 5 — Enable Kerberos Authentication in Nginx
+This is where your identity domain meets your application layer.
+Install the Kerberos module:
+sudo apt install libnginx-mod-http-auth-kerberos
+
+
+Edit your Nginx site:
+sudo nano /etc/nginx/sites-available/default
+
+
+Add inside the server block:
+auth_gss on;
+auth_gss_keytab /etc/krb5.keytab;
+auth_gss_service_name HTTP;
+
+
+Restart:
+sudo systemctl restart nginx
+
+
+Now your internal portal supports single sign‑on.
+Real‑world implication:
+This is how companies let employees access internal apps without typing passwords.
+
+🟦 PHASE 6 — Test from your client
+On the client VM:
+kinit marco
+
+
+Then open:
+http://app01.netopia.lan
+
+
+If Kerberos is working, you’ll see:
+Authenticated user: marco@NETOPIA.LAN
+
+🟩 NEXT STEP: Build a clean, professional Nginx site layout (no SSO needed)
+This is the perfect next milestone because:
+- It’s visible
+- It’s functional
+- It’s real-world
+- It’s progress you can see
+- It doesn’t depend on Kerberos at all
+We’re going to set up:
+- a proper /var/www/portal directory
+- a clean Nginx server block
+- a working PHP page
+- a browser test from your client VM
+This is the foundation every internal app server needs.
+
+🟦 STEP 1 — Create your portal directory
+On app01:
+sudo mkdir -p /var/www/portal
+sudo chown -R www-data:www-data /var/www/portal
+sudo chmod -R 755 /var/www/portal
+
+
+
+🟦 STEP 2 — Create a real index.php
+sudo nano /var/www/portal/index.php
+
+
+Paste this:
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Netopia Internal Portal</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: #f4f4f4;
+            margin: 0;
+            padding: 0;
+        }
+        header {
+            background: #2c3e50;
+            color: white;
+            padding: 20px;
+            text-align: center;
+        }
+        .container {
+            margin: 40px auto;
+            width: 80%;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+        }
+        h2 {
+            color: #2c3e50;
+        }
+        ul {
+            list-style: none;
+            padding-left: 0;
+        }
+        li {
+            margin: 10px 0;
+        }
+        a {
+            color: #2980b9;
+            text-decoration: none;
+            font-size: 18px;
+        }
+        a:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+
+<header>
+    <h1>Netopia Internal Portal</h1>
+</header>
+
+<div class="container">
+    <h2>Available Services</h2>
+    <ul>
+        <li><a href="#">BookStack (coming soon)</a></li>
+        <li><a href="#">Gitea (coming soon)</a></li>
+        <li><a href="#">Nextcloud (coming soon)</a></li>
+        <li><a href="#">Monitoring Dashboard (coming soon)</a></li>
+    </ul>
+</div>
+
+</body>
+</html>
+
+
+This is the classic “is PHP working?” test — and it always feels good to see it.
+
+🟦 STEP 3 — Create a clean Nginx server block
+sudo nano /etc/nginx/sites-available/portal
+
+
+Paste:
+server {
+    listen 80;
+    server_name app01.netopia.lan;
+
+    root /var/www/portal;
+    index index.php index.html;
+
+    location / {
+        try_files $uri $uri/ =404;
+    }
+
+    location ~ \.php$ {
+        include snippets/fastcgi-php.conf;
+        fastcgi_pass unix:/run/php/php8.1-fpm.sock;
+    }
+}
+
+
+(If your PHP version is different, I’ll adjust it.)
+
+🟦 STEP 4 — Enable the site
+sudo ln -s /etc/nginx/sites-available/portal /etc/nginx/sites-enabled/
+sudo nginx -t
+sudo systemctl reload nginx
+
+
+If nginx -t says OK, you’re golden.
+
+🟦 STEP 5 — Test from your client VM
+Open a browser on your client VM and go to:
+http://app01.netopia.lan
+
+🟦 Why this is the perfect next step
+- It proves Nginx is working
+- It proves PHP-FPM is working
+- It proves DNS is working
+- It proves your client VM can reach the app server
+- It gives you a visible success
+- It moves your homelab forward
+- It avoids the SSO rabbit hole for now
+This is exactly how real sysadmins build momentum.
+
+⭐ PHASE 2 — Install Your First Internal Service (BookStack)
+BookStack is perfect for your first internal service because:
+- It’s lightweight
+- It uses PHP + MariaDB (which you already have)
+- It integrates beautifully with FreeIPA via LDAP
+- It’s a real enterprise‑style internal wiki
+- It gives you a visible, functional, professional internal app
+This is the kind of thing companies deploy on their intranet.
+Let’s get it running.
+
+🟦 STEP 1 — Install dependencies
+On app01:
+sudo apt update
+sudo apt install git unzip
+
+🟦 STEP 2 — Create a database for BookStack
+Log into MariaDB:
+sudo mysql
+Inside the MariaDB shell:
+CREATE DATABASE bookstack CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE USER 'bookstack'@'localhost' IDENTIFIED BY 'boris<password>';
+GRANT ALL PRIVILEGES ON bookstack.* TO 'bookstack'@'localhost';
+FLUSH PRIVILEGES;
+EXIT;
+
+(You can change the password — just remember it.)
+
+🟦 STEP 3 — Download BookStack
+cd /var/www
+sudo git clone https://github.com/BookStackApp/BookStack.git --branch release --single-branch bookstack
+🟦 STEP 4 — Set permissions
+sudo chown -R www-data:www-data /var/www/bookstack
+sudo chmod -R 755 /var/www/bookstack
+🟦 STEP 5 — Copy the environment file
+cd /var/www/bookstack
+sudo cp .env.example .env
+
+Now edit it:
+sudo nano .env
+
+Set these values:
+APP_URL=http://app01.netopia.lan/bookstack
+
+DB_HOST=localhost
+DB_DATABASE=bookstack
+DB_USERNAME=bookstack
+DB_PASSWORD=StrongPasswordHere
+Save and exit.
+
+🟦 STEP 6 — Install PHP dependencies
+cd /var/www/bookstack
+sudo apt install php-gd php-dom php-xml php-mbstring php-zip php-curl php-simplexml php-ldap php-mysql php-tokenizer
+sudo systemctl restart php8.1-fpm
+sudo systemctl restart nginx
+sudo mkdir /var/www/bookstack/vendor
+sudo chown www-data:www-data /var/www/bookstack/vendor
+#NOTHING WORKED TO FIX THE COMPOSER, WE MUST UPGRADE TO php8.3 i think.
+sudo add-apt-repository ppa:ondrej/php
+sudo apt update
+sudo apt install php8.3 php8.3-fpm php8.3-cli php8.3-common php8.3-mysql php8.3-xml php8.3-mbstring php8.3-zip php8.3-gd php8.3-curl php8.3-ldap php8.3-simplexml php8.3-tokenizer
+#switch nginx to use php8.3
+sudo nano /etc/nginx/sites-available/bookstack
+# find and replace with 8.3
+fastcgi_pass unix:/run/php/php8.1-fpm.sock;
+sudo systemctl restart php8.3-fpm
+sudo systemctl restart nginx
+sudo -u www-data composer install --no-dev --no-interaction --prefer-dist
+sudo chown -R www-data:www-data /var/www/bookstack/storage
+sudo chown -R www-data:www-data /var/www/bookstack/bootstrap/cache
+sudo chmod -R 775 /var/www/bookstack/storage
+sudo chmod -R 775 /var/www/bookstack/bootstrap/cache
+
+If composer isn’t installed:
+sudo apt install composer
+🟦 STEP 7 — Generate the app key
+sudo -u www-data php artisan key:generate
+
+🟦 STEP 8 — Run the migrations
+sudo -u www-data php artisan migrate
+🟦 STEP 9 — Add an Nginx site for BookStack
+sudo nano /etc/nginx/sites-available/bookstack
+Paste:
+server {
+    listen 80;
+    server_name app01.netopia.lan;
+
+    root /var/www/bookstack/public;
+    index index.php;
+
+    location / {
+        try_files $uri $uri/ /index.php?$query_string;
+    }
+
+    location ~ \.php$ {
+        include snippets/fastcgi-php.conf;
+        fastcgi_pass unix:/run/php/php8.3-fpm.sock;
+    }
+}
+
+
+Enable it:
+sudo ln -s /etc/nginx/sites-available/bookstack /etc/nginx/sites-enabled/
+sudo nginx -t
+sudo systemctl reload nginx
+#MAN THIS FAILED :( DECIDED TO PIVOT apparently ubuntu22 and php8.1 are too old to use bookstack going to try GitHub instead 
+<ROLLBACK>
+sudo rm -rf /var/www/bookstack
+sudo rm /etc/nginx/sites-enabled/bookstack
+sudo rm /etc/nginx/sites-available/bookstack
+sudo systemctl reload nginx
+sudo add-apt-repository --remove ppa:ondrej/php
+sudo apt autoremove
+sudo MySQL
+DROP DATABASE bookstack;
+DROP USER 'bookstack'@'localhost';
+FLUSH PRIVILEGES;
+EXIT;
+</ROLLBACK
+
+⭐ PHASE 1 — Install Gitea (clean, fast, Ubuntu‑friendly)
+Gitea is one of the easiest, most reliable internal services you can deploy.
+No PHP.
+No Composer.
+No Laravel.
+No permission nightmares.
+Just a single binary and a systemd service.
+This is going to feel smooth.
+
+🟦 STEP 1 — Create a dedicated Gitea user
+On app01:
+sudo adduser \
+   --system \
+   --shell /bin/bash \
+   --gecos 'Gitea user' \
+   --group \
+   --disabled-password \
+   --home /home/gitea \
+   gitea
+
+
+
+🟦 STEP 2 — Create directories
+sudo mkdir -p /var/lib/gitea/{custom,data,log}
+sudo chown -R gitea:gitea /var/lib/gitea
+sudo chmod -R 750 /var/lib/gitea
+
+sudo mkdir -p /etc/gitea
+sudo chown root:gitea /etc/gitea
+sudo chmod 770 /etc/gitea
+
+
+
+🟦 STEP 3 — Download the latest Gitea binary
+cd /usr/local/bin
+sudo apt install certbot python3-certbot-nginx
+sudo wget -O gitea https://dl.gitea.com/gitea/1.23.4/gitea-1.23.4-linux-amd64
+sudo chmod +x gitea
+
+
+
+🟦 STEP 4 — Create the systemd service
+sudo nano /etc/systemd/system/gitea.service
+
+
+Paste:
+[Unit]
+Description=Gitea
+After=network.target
+
+[Service]
+RestartSec=2s
+Type=simple
+User=gitea
+Group=gitea
+WorkingDirectory=/var/lib/gitea/
+ExecStart=/usr/local/bin/gitea web --config /etc/gitea/app.ini
+Restart=always
+Environment=USER=gitea HOME=/home/gitea GITEA_WORK_DIR=/var/lib/gitea
+
+[Install]
+WantedBy=multi-user.target
+
+
+Save and exit.
+
+🟦 STEP 5 — Start Gitea
+sudo systemctl daemon-reload
+sudo systemctl enable --now gitea
+
+
+Check status:
+systemctl status gitea
+
+
+You should see “active (running)”.
+
+🟦 STEP 6 — Add Nginx reverse proxy
+sudo nano /etc/nginx/sites-available/gitea
+
+
+Paste:
+server {
+    listen 80;
+    server_name app01.netopia.lan;
+
+    location /gitea/ {
+        proxy_pass http://localhost:3000/;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Host $host;
+
+        # Required for subpath support
+        proxy_set_header X-Forwarded-Prefix /gitea;
+        proxy_set_header X-Forwarded-Host $host;
+
+    }
+}
+
+
+Enable it:
+sudo ln -s /etc/nginx/sites-available/gitea /etc/nginx/sites-enabled/
+sudo nginx -t
+sudo systemctl reload nginx
+
+the page loaded but without graphics and portal is gone, decided to pivot from subpath to giving gitea it's own dns
+
+⭐ Given your goal of a clean, professional homelab, Option A is the right move.
+It keeps:
+- your portal at app01.netopia.lan
+- Gitea at gitea.netopia.lan
+- no conflicts
+- no subpath headaches
+- no asset loading issues
+- no broken CSS
+- no override of your portal
+This is how real companies deploy Gitea.
+
+⭐ Let’s fix everything cleanly (recommended path)
+🟦 STEP 1 — Add DNS record in FreeIPA
+On your directory server:
+ipa dnsrecord-add netopia.lan gitea --a-ip-address=10.7.7.3
+
+
+(Replace IP with app01’s IP.)
+
+🟦 STEP 2 — Create a clean Nginx site for Gitea
+sudo nano /etc/nginx/sites-available/gitea
+
+
+Paste this (NO subpath):
+server {
+    listen 80;
+    server_name gitea.netopia.lan;
+
+    location / {
+        proxy_pass http://localhost:3000/;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Host $host;
+    }
+}
+
+
+Enable it:
+sudo ln -s /etc/nginx/sites-available/gitea /etc/nginx/sites-enabled/
+sudo nginx -t
+sudo systemctl reload nginx
+
+
+
+🟦 STEP 3 — Fix Gitea’s internal URL
+Edit:
+sudo nano /etc/gitea/app.ini
+
+
+Find the [server] section and set:
+DOMAIN = gitea.netopia.lan
+ROOT_URL = http://gitea.netopia.lan/
+
+
+Save and restart:
+sudo systemctl restart gitea
+
+
+
+🟦 STEP 4 — Test from your client VM
+Open:
+http://gitea.netopia.lan
+
+
+You will now see:
+- full CSS
+- full JS
+- full UI
+- no asset errors
+- no portal override
+- no subpath issues
+This is the clean, professional deployment.
+
+⭐ Why your portal broke
+Because Nginx had two sites claiming:
+server_name app01.netopia.lan;
+
+
+Gitea’s config won the conflict and took over /.
+Once we move Gitea to its own hostname, your portal returns instantly.
+--------this didn't work restoring portal----------
+sudo rm /etc/nginx/sites-enabled/gitea
+sudo rm /etc/nginx/sites-available/gitea
+sudo ln -s /etc/nginx/sites-available/portal /etc/nginx/sites-enabled/
+sudo nginx -t
+sudo systemctl reload nginx
+--------this worked, had to delete the old /gitea symlink before enabling the new site.
+during testing we found that the client vm is using dnsmasq for dns when digging fore gitea.netopia.lan but digging from @10.11.11.10 returned both dns records for gitea.netopia.lan 10.7.7.3 and 10.11.11.20
+will remove the old a record for gitea and reload dnsmasq to flush it's cache
+# LOGIN TO WEB UI FIND DNS AND DELETE 10.11.11.20 from gitea's record
+# verify ipa dnsrecord-show netopia.lan gitea
+# restart sudo systemctl restart named-pkcs11
+# on the GATEWAY
+sudo systemctl restart dnsmasq
+# test from client look for 10.7.7.3
+dig gitea.netopia.lan
+# test site http://gitea.netopia.lan
+# no go disable default site
+sudo rm /etc/nginx/sites-enabled/default
+sudo nginx -t
+sudo systemctl reload nginx
+__________________________________________________________
+none of this worked, we fully removed gitea symlincs from /etc/nginx/* tried a test page at test.netopia.lan and confirmed reverse proxying works, remade the gitea symlincs and confs in /etc/nginx/* flushed the dns cache on the gateway and client vmbrowser(firefox) and now it works.
+portal page stays the same, keep the removed bottom 3 lines that i remember deleted, gitea page is good, dns a record in FreeIPA is good removed the 10.7.7.3.
+# TO ADD A NEW APP/SERVICE TO app01 you must make a FreeIPA dns entry, must server_name *; in the /etc/nginx/*
+++++configure install gitea++++++
+#on app01
+sudo chown -R gitea:gitea /etc/gitea
+#run web ui installer
+sudo chown -R root:gitea /etc/gitea
+sudo chmod 750 /etc/gitea
+sudo chmod 640 /etc/gitea/app.ini
+# create organization and infrastructure repository
+# add ssh key to gitea
+# clone the repo on a client(so folder appears locally)
+# add a config, commit(local), push(app01)
+# (optional) break it and rollback
+
+#build monitoring node
+SCILAB already created, made yaml and set hostname

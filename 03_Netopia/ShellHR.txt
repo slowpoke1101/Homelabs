@@ -1,0 +1,372 @@
+# create hr directory
+sudo mkdir -p /var/www/hr/css
+sudo chown -R www-data:www-data /var/www/hr
+sudo chmod -R 755 /var/www/hr
+#ccs/style.ccs theme
+body {
+    margin: 0;
+    font-family: "Segoe UI", Arial, sans-serif;
+    background: #eef3f8;
+    color: #1a2a3a;
+}
+
+.header {
+    background: #1f4e79;
+    color: white;
+    padding: 20px 32px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.header-title {
+    font-size: 24px;
+    font-weight: bold;
+}
+
+.nav a {
+    color: white;
+    margin-left: 16px;
+    text-decoration: none;
+    font-size: 14px;
+}
+
+.nav a:hover {
+    text-decoration: underline;
+}
+
+.main {
+    max-width: 900px;
+    margin: 32px auto;
+    padding: 16px;
+}
+
+.panel {
+    background: white;
+    border-radius: 8px;
+    padding: 20px;
+    border: 1px solid #c7d5e0;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.05);
+}
+
+.panel-title {
+    font-size: 20px;
+    margin-bottom: 12px;
+    border-bottom: 1px solid #d0dce6;
+    padding-bottom: 6px;
+}
+
+.form-field {
+    margin-bottom: 16px;
+}
+
+.form-field label {
+    display: block;
+    font-size: 14px;
+    margin-bottom: 4px;
+}
+
+.form-field input, .form-field textarea {
+    width: 100%;
+    padding: 8px;
+    border-radius: 6px;
+    border: 1px solid #b8c7d6;
+    font-size: 14px;
+}
+
+.btn {
+    background: #1f4e79;
+    color: white;
+    padding: 8px 16px;
+    border-radius: 6px;
+    text-decoration: none;
+    font-size: 14px;
+}
+
+.btn:hover {
+    background: #2f6fb0;
+}
+
+.table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 12px;
+}
+
+.table th, .table td {
+    padding: 10px;
+    border-bottom: 1px solid #d0dce6;
+    text-align: left;
+}
+
+
+
+#home page
+sudo nano /var/www/hr/index.html
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Netopia HR Portal</title>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+
+<div class="header">
+    <div class="header-title">Netopia HR Portal</div>
+    <div class="nav">
+        <a href="/index.html">Home</a>
+        <a href="/directory.html">Employee Directory</a>
+        <a href="/login.html">Login</a>
+        <a href="/pto.html">Request PTO</a>
+        <a href="/ticket.html">HR Ticket</a>
+    </div>
+</div>
+
+<div class="main">
+    <div class="panel">
+        <div class="panel-title">Welcome to Netopia HR</div>
+        <p>This internal portal provides access to employee resources, HR tools, and company information.</p>
+        <p>Use the navigation above to access the directory, submit HR tickets, or request PTO.</p>
+    </div>
+</div>
+
+</body>
+</html>
+
+
+#login page
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Login · Netopia HR</title>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+
+<div class="header">
+    <div class="header-title">Netopia HR Portal</div>
+    <div class="nav">
+        <a href="/index.html">Home</a>
+        <a href="/directory.html">Employee Directory</a>
+        <a href="/login.html">Login</a>
+        <a href="/pto.html">Request PTO</a>
+        <a href="/ticket.html">HR Ticket</a>
+    </div>
+</div>
+
+<div class="main">
+    <div class="panel">
+        <div class="panel-title">Employee Login</div>
+        <p style="font-size:13px; opacity:0.7;">(This is a visual mockup only. No real authentication yet.)</p>
+
+        <div class="form-field">
+            <label>Username</label>
+            <input type="text" placeholder="jdoe">
+        </div>
+
+        <div class="form-field">
+            <label>Password</label>
+            <input type="password" placeholder="********">
+        </div>
+
+        <a class="btn" href="/dashboard.html">Login</a>
+    </div>
+</div>
+
+</body>
+</html>
+
+
+
+#dashboard
+
+sudo nano /var/www/hr/dashboard.html
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Dashboard · Netopia HR</title>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+
+<div class="header">
+    <div class="header-title">Netopia HR Portal</div>
+    <div class="nav">
+        <a href="/index.html">Home</a>
+        <a href="/directory.html">Employee Directory</a>
+        <a href="/login.html">Login</a>
+        <a href="/pto.html">Request PTO</a>
+        <a href="/ticket.html">HR Ticket</a>
+    </div>
+</div>
+
+<div class="main">
+    <div class="panel">
+        <div class="panel-title">Employee Dashboard</div>
+        <p><strong>Name:</strong> John Doe</p>
+        <p><strong>Department:</strong> IT Operations</p>
+        <p><strong>Manager:</strong> Marco</p>
+        <p><strong>Current PTO Balance:</strong> 14 days</p>
+    </div>
+</div>
+
+</body>
+</html>
+
+
+#employee directory
+sudo nano /var/www/hr/directory.html
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Employee Directory · Netopia HR</title>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+
+<div class="header">
+    <div class="header-title">Netopia HR Portal</div>
+    <div class="nav">
+        <a href="/index.html">Home</a>
+        <a href="/directory.html">Employee Directory</a>
+        <a href="/login.html">Login</a>
+        <a href="/pto.html">Request PTO</a>
+        <a href="/ticket.html">HR Ticket</a>
+    </div>
+</div>
+
+<div class="main">
+    <div class="panel">
+        <div class="panel-title">Employee Directory</div>
+
+        <table class="table">
+            <tr><th>Name</th><th>Department</th><th>Email</th></tr>
+            <tr><td>John Doe</td><td>IT</td><td>jdoe@netopia.lan</td></tr>
+            <tr><td>Sarah Lee</td><td>HR</td><td>slee@netopia.lan</td></tr>
+            <tr><td>Marco</td><td>Infrastructure</td><td>marco@netopia.lan</td></tr>
+        </table>
+    </div>
+</div>
+
+</body>
+</html>
+
+# pto request page
+
+sudo nano /var/www/hr/pto.html
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Request PTO · Netopia HR</title>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+
+<div class="header">
+    <div class="header-title">Netopia HR Portal</div>
+    <div class="nav">
+        <a href="/index.html">Home</a>
+        <a href="/directory.html">Employee Directory</a>
+        <a href="/login.html">Login</a>
+        <a href="/pto.html">Request PTO</a>
+        <a href="/ticket.html">HR Ticket</a>
+    </div>
+</div>
+
+<div class="main">
+    <div class="panel">
+        <div class="panel-title">PTO Request</div>
+
+        <div class="form-field">
+            <label>Employee Name</label>
+            <input type="text" placeholder="John Doe">
+        </div>
+
+        <div class="form-field">
+            <label>Start Date</label>
+            <input type="date">
+        </div>
+
+        <div class="form-field">
+            <label>End Date</label>
+            <input type="date">
+        </div>
+
+        <div class="form-field">
+            <label>Reason</label>
+            <textarea rows="4" placeholder="Vacation, appointment, etc."></textarea>
+        </div>
+
+        <a class="btn" href="/dashboard.html">Submit Request</a>
+    </div>
+</div>
+
+</body>
+</html>
+
+#hr ticket page
+sudo nano /var/www/hr/ticket.html
+<!DOCTYPE html>
+<html>
+<head>
+    <title>HR Ticket · Netopia HR</title>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+
+<div class="header">
+    <div class="header-title">Netopia HR Portal</div>
+    <div class="nav">
+        <a href="/index.html">Home</a>
+        <a href="/directory.html">Employee Directory</a>
+        <a href="/login.html">Login</a>
+        <a href="/pto.html">Request PTO</a>
+        <a href="/ticket.html">HR Ticket</a>
+    </div>
+</div>
+
+<div class="main">
+    <div class="panel">
+        <div class="panel-title">Submit HR Ticket</div>
+
+        <div class="form-field">
+            <label>Employee Name</label>
+            <input type="text" placeholder="John Doe">
+        </div>
+
+        <div class="form-field">
+            <label>Issue Type</label>
+            <input type="text" placeholder="Payroll, benefits, workplace issue, etc.">
+        </div>
+
+        <div class="form-field">
+            <label>Description</label>
+            <textarea rows="4" placeholder="Describe the issue..."></textarea>
+        </div>
+
+        <a class="btn" href="/dashboard.html">Submit Ticket</a>
+    </div>
+</div>
+
+</body>
+</html>
+
+# on DIRECTORY server
+ipa dnsrecord-add Netopia.lan hr --a-ip-address-10.11.11.20
+# back on app01
+sudo nano /etc/nginx/sites-available/hr
+server {
+    listen 80;
+    server_name hr.netopia.lan;
+
+    root /var/www/hr;
+    index index.html;
+
+    location / {
+        try_files $uri $uri/ =404;
+    }
+}
+sudo ln -s /etc/nginx/sites-available/hr /etc/nginx/sites-enabled/
+sudo nginx -t
+sudo systemctl reload nginx
+test

@@ -1,0 +1,123 @@
+marco
+boris
+
+#update and install server tools
+sudo dnf update -y
+sudo dnf install -y dnsutils curl wget tar unzip nano zip 
+#rocky enables ip6 listeners by default, disable them
+sudo sysctl -w net.ipv6.conf.all.disable_ipv6=1
+sudo sysctl -w net.ipv6.conf.default.disable_ipv6=1
+sudo sysctl -w net.ipv6.conf.lo.disable_ipv6=1
+# persist it
+echo "net.ipv6.conf.all.disable_ipv6 = 1" | sudo tee -a /etc/sysctl.conf
+echo "net.ipv6.conf.default.disable_ipv6 = 1" | sudo tee -a /etc/sysctl.conf
+echo "net.ipv6.conf.lo.disable_ipv6 = 1" | sudo tee -a /etc/sysctl.conf
+sudo sysctl --system
+# this disables ipv6(network stack sysctl) services will fail trying ip6
+# disable unnecessary services
+sudo systemctl disable cups
+sudo systemctl disable avahi-daemon
+sudo systemctl disable bluetooth
+sudo systemctl disable rpcbind
+sudo systemctl disable chronyd   # optional if you want no time sync
+## Disable ipv6 at the kernel level ########
+#edit the grub config
+sudo nano /etc/default/grub
+#find line GRUB_CMDLINE_LINUX="" add a space and this to the end
+ipv6.disable=1
+#then rebuild grub 
+sudo grub2-mkconfig -o /boot/grub2/grub.cfg
+
+sudo iptables -A INPUT -i lo -j ACCEPT
+sudo iptables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+sudo iptables -A INPUT -p tcp --dport 22 -s 192.168.1.76 -j ACCEPT
+sudo iptables -A INPUT -j DROP
+
+#do this after creating ssh keys
+sudo restorecon -R -v ~/.ssh
+
+
+nmcli connection show enp0s3 | grep ipv6
+#ipv6.method: auto
+sudo nmcli connection modify ens160 ipv6.method "disabled"
+sudo nmcli connection modify "Wired connection 1" connection.id ens160
+sudo nmcli connection modify enp0s8 ipv6.method "disabled"
+#this is same as adding dhcp6: false accept-ra: false in netplan/yaml
+sudo nmcli connection modify enp0s8 \
+  ipv4.method manual ipv4.addresses 192.168.1.145/24 \
+sudo systemctl restart NetworkManager
+#same as sudo netplan apply
+reboot
+ip a
+ip -6 route
+ping6 google.com
+
+1. Switch the compositor to XRender (lighter than OpenGL)
+OpenGL looks nice, but VMware’s virtual GPU doesn’t accelerate it well.
+- System Settings
+- Display and Monitor
+- Compositor
+- Rendering backend → XRender
+- Apply
+2. Disable heavy animations
+Still in Compositor:
+- Animation speed → Fast
+- Uncheck:
+- Blur
+- Wobbly windows
+- Sliding popups
+- Dim inactive windows
+- Background contrast
+These effects look cool but eat CPU cycles in a VM.
+
+3. Disable desktop effects you don’t need
+System Settings → Workspace Behavior → Desktop Effects
+Turn off:
+- Blur
+- Fade desktop
+- Magic lamp
+- Scale
+- Sliding windows
+- Translucency
+- Window open/close animations
+Keep:
+- Present windows (optional)
+- Overview (optional)
+- Screen edge effects (optional)
+This keeps KDE feeling like KDE, just lighter.
+
+4. Reduce background services
+KDE starts a lot of helpers you don’t need in a lab VM.
+System Settings → Startup and Shutdown → Background Services
+Disable:
+- KDE Connect
+- Printer notifier
+- Bluetooth
+- PowerDevil (optional if on desktop VM)
+- Baloo file indexer (see next step)
+5. Disable Baloo file indexing
+Baloo is KDE’s search indexer — great on real hardware, heavy in a VM.
+Run:
+balooctl disable
+This stops background disk scanning and CPU spikes.
+6. Disable KDE Wallet (optional)
+If you don’t use it:
+System Settings → KDE Wallet
+Uncheck “Enable the KDE wallet subsystem”
+This removes annoying prompts and background processes.
+7. Set a lighter window decoration
+System Settings → Appearance → Window Decorations
+Choose:
+- Breeze (default)
+or
+- Breeze Light
+Avoid the more animated themes.
+8. Disable desktop search
+System Settings → Search → File Search
+Turn off:
+- Enable File Search
+- Enable Content Search
+This prevents background indexing.
+9. Reduce swappiness
+VMs benefit from less swapping.
+echo "vm.swappiness=10" | sudo tee -a /etc/sysctl.conf

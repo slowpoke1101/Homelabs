@@ -1,0 +1,165 @@
+1. Main Ubuntu Server VM — “Core Infrastructure”
+Role: gateway
+Specs: 1 GB RAM, 1 vCPU
+Services:
+- DNS
+- DHCP 
+
+2. Lightweight Desktop Client (LXQt / Lubuntu)
+Role: “employee workstation”
+Specs: 1.5–2 GB RAM, 1 vCPU
+Uses:
+- Testing DNS, DHCP
+- Testing LDAP logins
+- Testing internal apps
+- Simulating a real user environment
+- Running browser‑based tools
+This is the daily driver for testing the whole environment.
+
+3. Directory & Authentication Server - ROCKYLINUX
+Role: Identity management
+Specs: 1 GB RAM, 1 vCPU
+Services:
+- FreeIPA
+- Kerberos
+- SSSD integration
+- Certificate Authority (maybe)
+This VM simulates enterprise identity and authentication.
+
+4. Application Server
+Role: Internal apps & databases
+Specs: 1 GB RAM, 1 vCPU
+Services:
+- MariaDB or PostgreSQL
+- Redis
+- Internal web apps
+- File server (Samba/NFS)
+- Internal wiki or dashboard
+Services the clients can access.
+
+5. Security / Monitoring Node
+Role: Visibility & security
+Specs: 1 GB RAM, 1 vCPU
+Services:
+- Suricata or Zeek (light mode)
+- Prometheus node exporter
+- Grafana
+- Fail2ban
+- Logs
+This VM gives security monitoring.
+
+The Virtual Switches (VMware Networks)
+create three virtual networks inside VMware:
+VMnet11 — Infrastructure Network (10.11.11.0/24)
+This is the “server LAN”
+Used by:
+- Core Infrastructure VM
+- Directory/Identity VM
+- Application Server VM
+- Security/Monitoring VM
+backend network — no clients here.
+
+VMnet12 — Client Network (10.12.12.0/24)
+This the “employee LAN”
+Used by:
+- LXQt client
+- Any future Windows client
+- Test devices
+This is where DHCP, DNS, segmentation, and authentication get tested.
+
+VMnet13 — Management (10.13.13.0/24)
+.
+Used for:
+- SSH access
+- Web admin panels
+- Monitoring dashboards
+This simulates an enterprise management VLAN.
+
+Routing Model
+Core Infrastructure VM acts as the router between subnets.
+It will have three NICs:
+eth0 vmnet11 server lan
+eth1 vmnet12 client lan
+eth2 vmnet13 management
+
+This VM handles:
+- Routing
+- DHCP
+- DNS
+- Firewall rules
+- NAT (internet access)
+
+IP Scheme 
+Infrastructure Network (10.11.11.0/24)
+- Gateway: 10.11.11.1 (Core Infra VM)
+- Directory Server: 10.11.11.10
+- App Server: 10.11.11.20
+- Security Node: 11.11.11.30
+
+Client Network (10.12.12.0/24)
+- Gateway: 10.12.12.1 (Core Infra VM)
+- DHCP range: 10.12.12.100–10.12.12.200
+- LXQt client: DHCP
+- Windows client: DHCP
+
+Management Network (10.13.13.0/24)
+- Gateway: 10.13.13.1
+- SSH access: 10.13.13.x
+- Monitoring dashboards: 10.13.13.x
+This keeps admin traffic separate from client traffic.
+
+Core Infrastructure VM is acting as the router/firewall between:
+- Server LAN (10.11.11.0/24)
+- Client LAN (10.12.12.0/24)
+- Management LAN (10.13.13.0/24)
+So the firewall rules live on that VM.
+Default deny → Allow specific flows → Log everything important
+
+Default Policies
+These are baseline rules:
+- DROP all forwarding traffic by default
+- ACCEPT established/related connections
+- ACCEPT loopback
+- DROP invalid packets
+
+Allow Client → Server LAN (only what’s needed)
+client VM should be able to:
+DNS
+Client → CoreInfra:53 (UDP/TCP)
+DHCP
+Client → CoreInfra:67/68 (UDP)
+LDAP / FreeIPA (for logins)
+Client → DirectoryServer:389 (LDAP)
+Client → DirectoryServer:636 (LDAPS)
+Client → DirectoryServer:88,464 (Kerberos)
+Web apps
+Client → AppServer:80,443
+Ping (optional)
+Client → ServerLAN:ICMP
+Block everything else
+clients cannot directly SSH into servers.
+
+Allow Server LAN → Server LAN
+Servers need to talk to each other.
+Allow:
+- DNS
+- LDAP
+- Kerberos
+- Database ports
+- Syslog
+- Monitoring
+- Internal APIs
+This istrusted backend
+
+Allow Management LAN → Everything
+management network is the 'sysadmin VLAN'
+Allow:
+- SSH
+- Web admin panels
+- Monitoring dashboards
+- Logs
+- Everything needed to manage the environment
+
+Block Client → Management LAN
+Clients should never reach management interfaces.
+DROP 10.12.12.0/24 → 10.13.13.0/24

@@ -1,0 +1,868 @@
+# on app01
+sudo mkdir -p /var/www/shop/css /var/www/shop/img
+sudo chown -R www-data:www-data /var/www/shop
+sudo chmod -R 755 /var/www/shop
+# ccs/style.ccs bnet3 PET theme
+sudo nano /var/www/shop/css/style.css
+body {
+    margin: 0;
+    font-family: "Segoe UI", Arial, sans-serif;
+    background: #0b1630;
+    color: #e4f3ff;
+}
+
+a {
+    color: #ffdd4a;
+    text-decoration: none;
+}
+
+a:hover {
+    text-decoration: underline;
+}
+
+.header {
+    background: linear-gradient(90deg, #1b3f7a, #2f6ccf);
+    padding: 16px 32px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 2px solid #6fd3ff;
+}
+
+.header-title {
+    font-size: 24px;
+    font-weight: bold;
+    letter-spacing: 1px;
+}
+
+.header-sub {
+    font-size: 12px;
+    opacity: 0.8;
+}
+
+.nav {
+    display: flex;
+    gap: 16px;
+}
+
+.nav a {
+    padding: 6px 12px;
+    border-radius: 6px;
+    background: rgba(8, 24, 64, 0.7);
+    border: 1px solid #4ea8ff;
+    font-size: 13px;
+}
+
+.nav a:hover {
+    background: #4ea8ff;
+    color: #041024;
+}
+
+.main {
+    max-width: 1000px;
+    margin: 24px auto;
+    padding: 16px;
+}
+
+.panel {
+    background: linear-gradient(135deg, #10254a, #1b3f7a);
+    border-radius: 10px;
+    border: 2px solid #6fd3ff;
+    padding: 20px;
+    box-shadow: 0 0 12px rgba(0, 200, 255, 0.25);
+}
+
+.panel-title {
+    font-size: 20px;
+    margin-bottom: 10px;
+    border-bottom: 1px solid #6fd3ff;
+    padding-bottom: 6px;
+}
+
+.grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 16px;
+    margin-top: 16px;
+}
+
+.card {
+    background: #0f2142;
+    border-radius: 8px;
+    border: 1px solid #4ea8ff;
+    padding: 12px;
+}
+
+.card-title {
+    font-size: 16px;
+    margin-bottom: 4px;
+}
+
+.card-meta {
+    font-size: 12px;
+    opacity: 0.8;
+    margin-bottom: 6px;
+}
+
+.card-desc {
+    font-size: 13px;
+    margin-bottom: 10px;
+}
+
+.btn {
+    display: inline-block;
+    padding: 6px 12px;
+    border-radius: 6px;
+    background: #ffdd4a;
+    color: #10254a;
+    font-weight: bold;
+    font-size: 13px;
+    border: none;
+}
+
+.btn:hover {
+    background: #ffe97f;
+    cursor: pointer;
+}
+
+.info-row {
+    display: flex;
+    justify-content: space-between;
+    font-size: 13px;
+    margin-top: 6px;
+}
+
+.form-field {
+    margin-bottom: 12px;
+}
+
+.form-field label {
+    display: block;
+    font-size: 13px;
+    margin-bottom: 4px;
+}
+
+.form-field input {
+    width: 100%;
+    padding: 6px;
+    border-radius: 4px;
+    border: 1px solid #4ea8ff;
+    background: #071226;
+    color: #e4f3ff;
+}
+
+.center {
+    text-align: center;
+}
+
+.small {
+    font-size: 12px;
+    opacity: 0.8;
+}
+#index.html PET style homepage # # # 3 3 3 # # #  # #
+sudo nano /var/www/shop/index.html
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Netopia PET Shop</title>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<div class="header">
+    <div>
+        <div class="header-title">Netopia PET Shop</div>
+        <div class="header-sub">BN3–4 Style · Internal Cyberworld Vendor</div>
+    </div>
+    <div class="nav">
+        <a href="/index.html">Home</a>
+        <a href="/inventory.html">Battle Chips</a>
+        <a href="/login.html">Operator Login</a>
+        <a href="/checkout.html">Checkout</a>
+    </div>
+</div>
+
+<div class="main">
+    <div class="panel">
+        <div class="panel-title">Welcome, Operator</div>
+        <p>Access authorized. This internal PET shop provides upgrades, Battle Chips, and Navi enhancements for Netopia’s cyber defense team.</p>
+        <p>Browse inventory, review Navi gear, and prepare for the next virus busting operation.</p>
+    </div>
+
+    <div class="panel" style="margin-top:16px;">
+        <div class="panel-title">Featured Upgrades</div>
+        <div class="grid">
+            <div class="card">
+                <div class="card-title">BassGS Program Advance</div>
+                <div class="card-meta">Element: Dark · Rarity: S</div>
+                <div class="card-desc">Devastating multi‑hit dark attack. Recommended only for elite Operators.</div>
+                <div class="info-row">
+                    <span>Cost: 99999 Zenny</span>
+                    <a class="btn" href="/product-bassgs.html">View</a>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">ProtoMan.EXE Support</div>
+                <div class="card-meta">Navi Support · Rarity: A</div>
+                <div class="card-desc">Summon ProtoMan.EXE for precise, high‑damage slashes.</div>
+                <div class="info-row">
+                    <span>Cost: 75000 Zenny</span>
+                    <a class="btn" href="/product-protoman.html">View</a>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">MegaBuster Upgrade</div>
+                <div class="card-meta">Core Upgrade · Rarity: B</div>
+                <div class="card-desc">Increases charge speed and power. Ideal for frontline Navis.</div>
+                <div class="info-row">
+                    <span>Cost: 12000 Zenny</span>
+                    <a class="btn" href="/inventory.html">Browse Chips</a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+</body>
+</html>
+
+##inventory.html battlechip list# # # # # # #
+sudo nano /var/www/shop/inventory.html
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Netopia PET Shop · Inventory</title>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<div class="header">
+    <div>
+        <div class="header-title">Netopia PET Shop</div>
+        <div class="header-sub">Inventory · Battle Chips & Upgrades</div>
+    </div>
+    <div class="nav">
+        <a href="/index.html">Home</a>
+        <a href="/inventory.html">Battle Chips</a>
+        <a href="/login.html">Operator Login</a>
+        <a href="/checkout.html">Checkout</a>
+    </div>
+</div>
+
+<div class="main">
+    <div class="panel">
+        <div class="panel-title">Available Battle Chips</div>
+        <div class="grid">
+            <div class="card">
+                <div class="card-title">BassGS Program Advance</div>
+                <div class="card-meta">Dark · S Rank</div>
+                <div class="card-desc">Combines multiple dark chips into a single overwhelming attack.</div>
+                <div class="info-row">
+                    <span>99999 Zenny</span>
+                    <a class="btn" href="/product-bassgs.html">Details</a>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">ProtoMan.EXE Support</div>
+                <div class="card-meta">Sword · A Rank</div>
+                <div class="card-desc">Calls ProtoMan.EXE to execute a precise, high‑damage slash.</div>
+                <div class="info-row">
+                    <span>75000 Zenny</span>
+                    <a class="btn" href="/product-protoman.html">Details</a>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">MegaBuster Upgrade</div>
+                <div class="card-meta">Core · B Rank</div>
+                <div class="card-desc">Boosts charge speed and power for your main Navi.</div>
+                <div class="info-row">
+                    <span>12000 Zenny</span>
+                    <a class="btn" href="/checkout.html">Add to Cart</a>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">HP Memory +200</div>
+                <div class="card-meta">Support · B Rank</div>
+                <div class="card-desc">Permanently increases Navi HP by 200. Recommended for long busting sessions.</div>
+                <div class="info-row">
+                    <span>18000 Zenny</span>
+                    <a class="btn" href="/checkout.html">Add to Cart</a>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">Cannon ×3 Pack</div>
+                <div class="card-meta">Shot · C Rank</div>
+                <div class="card-desc">Reliable early‑game chip set. Good for training new Operators.</div>
+                <div class="info-row">
+                    <span>3000 Zenny</span>
+                    <a class="btn" href="/checkout.html">Add to Cart</a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+</body>
+</html>
+@product-bassgs.html bassGS page#3###################
+sudo nano /var/www/shop/product-bassgs.html
+<!DOCTYPE html>
+<html>
+<head>
+    <title>BassGS Program Advance · Netopia PET Shop</title>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<div class="header">
+    <div>
+        <div class="header-title">Netopia PET Shop</div>
+        <div class="header-sub">Item Detail · BassGS Program Advance</div>
+    </div>
+    <div class="nav">
+        <a href="/index.html">Home</a>
+        <a href="/inventory.html">Battle Chips</a>
+        <a href="/login.html">Operator Login</a>
+        <a href="/checkout.html">Checkout</a>
+    </div>
+</div>
+
+<div class="main">
+    <div class="panel">
+        <div class="panel-title">BassGS Program Advance</div>
+        <p><strong>Element:</strong> Dark · <strong>Rank:</strong> S · <strong>Type:</strong> Program Advance</p>
+        <p>This legendary Program Advance channels the power of Bass into a devastating multi‑hit dark attack that engulfs the entire field.</p>
+        <ul class="small">
+            <li>• Recommended only for elite Operators with stable PET systems.</li>
+            <li>• May cause instability in low‑tier Navis.</li>
+            <li>• Not approved for standard school network use.</li>
+        </ul>
+        <div class="info-row" style="margin-top:12px;">
+            <span><strong>Cost:</strong> 99999 Zenny</span>
+            <a class="btn" href="/checkout.html">Add to Cart</a>
+        </div>
+    </div>
+</div>
+</body>
+</html>
+#product-protoman.html protoman page######################
+sudo nano /var/www/shop/product-protoman.html
+<!DOCTYPE html>
+<html>
+<head>
+    <title>ProtoMan.EXE Support · Netopia PET Shop</title>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<div class="header">
+    <div>
+        <div class="header-title">Netopia PET Shop</div>
+        <div class="header-sub">Item Detail · ProtoMan.EXE Support</div>
+    </div>
+    <div class="nav">
+        <a href="/index.html">Home</a>
+        <a href="/inventory.html">Battle Chips</a>
+        <a href="/login.html">Operator Login</a>
+        <a href="/checkout.html">Checkout</a>
+    </div>
+</div>
+
+<div class="main">
+    <div class="panel">
+        <div class="panel-title">ProtoMan.EXE Support</div>
+        <p><strong>Role:</strong> Navi Support · <strong>Rank:</strong> A · <strong>Type:</strong> Sword</p>
+        <p>Summon ProtoMan.EXE to execute precise, high‑damage slashes that cut through enemy defenses.</p>
+        <ul class="small">
+            <li>• Ideal for Operators who favor aggressive, close‑range tactics.</li>
+            <li>• Synergizes well with sword‑type Style Changes.</li>
+            <li>• Requires stable link with ProtoMan’s Operator.</li>
+        </ul>
+        <div class="info-row" style="margin-top:12px;">
+            <span><strong>Cost:</strong> 75000 Zenny</span>
+            <a class="btn" href="/checkout.html">Add to Cart</a>
+        </div>
+    </div>
+</div>
+</body>
+</html>
+#login.html PET login screen#######################
+sudo nano /var/www/shop/login.html
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Operator Login · Netopia PET Shop</title>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<div class="header">
+    <div>
+        <div class="header-title">Netopia PET Shop</div>
+        <div class="header-sub">Operator Authentication</div>
+    </div>
+    <div class="nav">
+        <a href="/index.html">Home</a>
+        <a href="/inventory.html">Battle Chips</a>
+        <a href="/login.html">Operator Login</a>
+        <a href="/checkout.html">Checkout</a>
+    </div>
+</div>
+
+<div class="main">
+    <div class="panel">
+        <div class="panel-title">Operator Login</div>
+        <p class="small">Note: This is a visual mockup only. No real authentication is performed.</p>
+        <form>
+            <div class="form-field">
+                <label>Operator ID</label>
+                <input type="text" placeholder="LAN_HIKARI">
+            </div>
+            <div class="form-field">
+                <label>PET Access Code</label>
+                <input type="password" placeholder="********">
+            </div>
+            <div class="center" style="margin-top:12px;">
+                <a class="btn" href="/dashboard.html">Jack In</a>
+            </div>
+        </form>
+    </div>
+</div>
+</body>
+</html>
+
+#dashboard.html - logged in PET dashboard##############
+sudo nano /var/www/shop/dashboard.html
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Operator Dashboard · Netopia PET Shop</title>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<div class="header">
+    <div>
+        <div class="header-title">Netopia PET Shop</div>
+        <div class="header-sub">Operator Dashboard</div>
+    </div>
+    <div class="nav">
+        <a href="/index.html">Home</a>
+        <a href="/inventory.html">Battle Chips</a>
+        <a href="/login.html">Operator Login</a>
+        <a href="/checkout.html">Checkout</a>
+    </div>
+</div>
+
+<div class="main">
+    <div class="panel">
+        <div class="panel-title">Active Navi Status</div>
+        <p><strong>Navi:</strong> MegaMan.EXE</p>
+        <p><strong>HP:</strong> 1000</p>
+        <p><strong>Style:</strong> Custom Style</p>
+        <p><strong>Folder:</strong> Optimized for multi‑hit combos and Program Advances.</p>
+    </div>
+
+    <div class="panel" style="margin-top:16px;">
+        <div class="panel-title">Quick Actions</div>
+        <ul class="small">
+            <li>• <a href="/inventory.html">Browse Battle Chips</a></li>
+            <li>• <a href="/checkout.html">Review Checkout</a></li>
+            <li>• <a href="/index.html">Return to PET Home</a></li>
+        </ul>
+    </div>
+</div>
+</body>
+</html>
+
+#checkout.html fake checkout###############
+sudo nano /var/www/shop/checkout.html
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Checkout · Netopia PET Shop</title>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<div class="header">
+    <div>
+        <div class="header-title">Netopia PET Shop</div>
+        <div class="header-sub">Checkout · Zenny Transfer</div>
+    </div>
+    <div class="nav">
+        <a href="/index.html">Home</a>
+        <a href="/inventory.html">Battle Chips</a>
+        <a href="/login.html">Operator Login</a>
+        <a href="/checkout.html">Checkout</a>
+    </div>
+</div>
+
+<div class="main">
+    <div class="panel">
+        <div class="panel-title">Checkout</div>
+        <p class="small">This is a visual mockup only. No real transactions occur.</p>
+        <form>
+            <div class="form-field">
+                <label>Operator ID</label>
+                <input type="text" placeholder="LAN_HIKARI">
+            </div>
+            <div class="form-field">
+                <label>Linked PET</label>
+                <input type="text" placeholder="MEGAMAN.EXE">
+            </div>
+            <div class="form-field">
+                <label>Zenny Source</label>
+                <input type="text" placeholder="Netopia Internal Account">
+            </div>
+            <div class="form-field">
+                <label>Order Summary</label>
+                <input type="text" placeholder="BassGS, ProtoMan.EXE Support, HP Memory +200">
+            </div>
+            <div class="center" style="margin-top:12px;">
+                <button type="button" class="btn">Confirm Transfer</button>
+            </div>
+        </form>
+    </div>
+</div>
+</body>
+</html>
+
+# on DIRECTORY server
+ipa dnsrecord-add netopia.lan shop --a-ip-address=10.11.11.20
+# back on app01
+sudo nano /etc/nginx/sites-available/shop
+server {
+    listen 80;
+    server_name shop.netopia.lan;
+
+    root /var/www/shop;
+    index index.html;
+
+    location / {
+        try_files $uri $uri/ =404;
+    }
+}
+
+sudo ln -s /etc/nginx/sites-available/shop /etc/nginx/sites-enabled/
+sudo nginx -t
+sudo systemctl reload nginx
+
+++++++++++++++ UPGRADE +++++++++++++++++++
+# on app01
+#switch html to php
+index.html → index.php
+inventory.html → inventory.php
+product-bassgs.html → product-bassgs.php
+product-protoman.html → product-protoman.php
+checkout.html → checkout.php
+login.html → login.php
+dashboard.html → dashboard.php
+sudo MySQL
+#inside MariaDB
+CREATE DATABASE shop;
+
+CREATE USER 'shop'@'localhost' IDENTIFIED BY 'StrongPasswordHere';
+
+GRANT ALL PRIVILEGES ON shop.* TO 'shop'@'localhost';
+
+FLUSH PRIVILEGES;
+EXIT;
+##
+#create tables users,products,cart,orders
+USE shop;
+
+CREATE TABLE users (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    username VARCHAR(50) UNIQUE,
+    password VARCHAR(255),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE products (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(100),
+    description TEXT,
+    price INT,
+    image VARCHAR(255)
+);
+
+CREATE TABLE cart (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT,
+    product_id INT,
+    quantity INT DEFAULT 1,
+    FOREIGN KEY (user_id) REFERENCES users(id),
+    FOREIGN KEY (product_id) REFERENCES products(id)
+);
+
+CREATE TABLE orders (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT,
+    total INT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id)
+);
+##
+## add php sessions(login,cart,user state) to the top of every .php
+<?php
+session_start();
+?>
+####
+# create database connection file we will link this to every page so that they can all talk to MariaDB
+sudo nano /var/www/shop/db.php
+<?php
+$host = "localhost";
+$dbname = "shop";
+$username = "shop";
+$password = "StrongPasswordHere"; // use the password you created
+
+try {
+    $db = new PDO("mysql:host=$host;dbname=$dbname;charset=utf8mb4", $username, $password);
+    $db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+} catch (PDOException $e) {
+    die("Database connection failed: " . $e->getMessage());
+}
+?>
+##
+##then add this to the top of every .php page
+<?php
+session_start();
+require_once "db.php";
+?>
+
+#THEN in /etc/nginx/sites-available/shop change it to this
+server {
+    listen 80;
+    server_name shop.netopia.lan;
+
+    root /var/www/shop;
+    index index.php index.html;
+
+    location / {
+        try_files $uri $uri/ /index.php?$query_string;
+    }
+
+    location ~ \.php$ {
+        include snippets/fastcgi-php.conf;
+        fastcgi_pass unix:/run/php/php8.1-fpm.sock;
+    }
+
+    location ~ /\.ht {
+        deny all;
+    }
+}
+reload nginx
+# hit a road block here, when clicking any link on the shop home page it would show the url change but the page would remain the same, we tested the manual url like http://shop.netopia.lan/inventory.php and that worked but links from the home page didn't. finally i saw that the urls were showing .html when clicking a link on the home page so we have to change every reference to those old links to point to the new .php ones
+grep -R ".html" /var/www/shop
+Ctrl + \
+type .html
+replace with .php
+A(all)
+
+++++ create login backend ++++++
+/var/www/shop/register.php
+<?php
+session_start();
+require_once "db.php";
+
+// If form submitted, create user
+if ($_SERVER["REQUEST_METHOD"] === "POST") {
+    $username = $_POST["username"];
+    $password = password_hash($_POST["password"], PASSWORD_DEFAULT);
+
+    $stmt = $db->prepare("INSERT INTO users (username, password) VALUES (?, ?)");
+    $stmt->execute([$username, $password]);
+
+    echo "<div style='font-family: sans-serif; padding: 20px; color: white;'>User created! You can now log in.</div>";
+    exit;
+}
+?>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Create Operator Account</title>
+    <link rel="stylesheet" href="/ccs/style.css">
+</head>
+<body>
+
+<div class="panel">
+    <div class="panel-title">Create Operator Account</div>
+
+    <div class="panel-content">
+
+        <form method="POST" class="form-block">
+
+            <label class="form-label">Username</label>
+            <input class="form-input" name="username" required>
+
+            <label class="form-label">Password</label>
+            <input class="form-input" type="password" name="password" required>
+
+            <button class="btn-primary" type="submit">Create Account</button>
+
+        </form>
+
+    </div>
+</div>
+
+</body>
+</html>
+
+###
+####create login page####
+/var/www/shop/login.php
+<?php
+session_start();
+require_once "db.php";
+
+// If redirected here after logout or failed login, you can show messages later if you want.
+?>
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Operator Login · Netopia PET Shop</title>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+
+<div class="header">
+    <div>
+        <div class="header-title">Netopia PET Shop</div>
+        <div class="header-sub">Operator Authentication</div>
+    </div>
+    <div class="nav">
+        <a href="/index.php">Home</a>
+        <a href="/inventory.php">Battle Chips</a>
+        <a href="/login.php">Operator Login</a>
+        <a href="/checkout.php">Checkout</a>
+    </div>
+</div>
+
+<div class="main">
+    <div class="panel">
+        <div class="panel-title">Operator Login</div>
+<?php if (isset($_SESSION["login_error"])): ?>
+    <p class="small" style="color:#ff8080; font-weight:bold;">
+        <?= $_SESSION["login_error"]; ?>
+    </p>
+    <?php unset($_SESSION["login_error"]); ?>
+<?php endif; ?>
+        <p class="small">Enter your Operator credentials to access PET systems.</p>
+
+        <form method="POST" action="login_process.php">
+
+            <div class="form-field">
+                <label>Operator ID</label>
+                <input type="text" name="username" placeholder="LAN_HIKARI" required>
+            </div>
+
+            <div class="form-field">
+                <label>PET Access Code</label>
+                <input type="password" name="password" placeholder="********" required>
+            </div>
+
+            <div class="center" style="margin-top:12px;">
+                <button class="btn" type="submit">Jack In</button>
+            </div>
+
+        </form>
+    </div>
+</div>
+
+</body>
+</html>
+#### create login process #####
+/var/www/shop/login_process.php
+<?php
+session_start();
+require_once "db.php";
+
+$username = $_POST["username"];
+$password = $_POST["password"];
+
+// 1. Check if username exists
+$stmt = $db->prepare("SELECT * FROM users WHERE username = ?");
+$stmt->execute([$username]);
+$user = $stmt->fetch(PDO::FETCH_ASSOC);
+
+if (!$user) {
+    $_SESSION["login_error"] = "No user found.";
+    header("Location: login.php");
+    exit;
+}
+
+// 2. Check password
+if (!password_verify($password, $user["password"])) {
+    $_SESSION["login_error"] = "Incorrect password.";
+    header("Location: login.php");
+    exit;
+}
+
+// 3. Login success
+$_SESSION["user_id"] = $user["id"];
+header("Location: dashboard.php");
+exit;
+
+##### edit/protect the dashboard ####
+/var/www/shop/dashboard.php
+<?php
+session_start();
+require_once "db.php";
+
+// Protect the page
+if (!isset($_SESSION["user_id"])) {
+    header("Location: login.php");
+    exit;
+}
+?>
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Operator Dashboard · Netopia PET Shop</title>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+
+<div class="header">
+    <div>
+        <div class="header-title">Netopia PET Shop</div>
+        <div class="header-sub">Operator Dashboard</div>
+    </div>
+    <div class="nav">
+        <a href="/index.php">Home</a>
+        <a href="/inventory.php">Battle Chips</a>
+        <a href="/login.php">Operator Login</a>
+        <a href="/checkout.php">Checkout</a>
+    </div>
+</div>
+
+<div class="main">
+
+    <div class="panel">
+        <div class="panel-title">Active Navi Status</div>
+        <p><strong>Navi:</strong> MegaMan.EXE</p>
+        <p><strong>HP:</strong> 1000</p>
+        <p><strong>Style:</strong> Custom Style</p>
+        <p><strong>Folder:</strong> Optimized for multi‑hit combos and Program Advances.</p>
+    </div>
+
+    <div class="panel" style="margin-top:16px;">
+        <div class="panel-title">Quick Actions</div>
+        <ul class="small">
+            <li>• <a href="/inventory.php">Browse Battle Chips</a></li>
+            <li>• <a href="/checkout.php">Review Checkout</a></li>
+            <li>• <a href="/index.php">Return to PET Home</a></li>
+            <li>• <a href="/logout.php">Logout</a></li>
+        </ul>
+    </div>
+
+</div>
+
+</body>
+</html>
+#### add logout ####
+/var/www/shop/logout.php
+<?php
+session_start();
+session_destroy();
+header("Location: login.php");
+exit;

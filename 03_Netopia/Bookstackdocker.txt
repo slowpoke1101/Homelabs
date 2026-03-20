@@ -1,0 +1,89 @@
+++++ install docker +++++
+sudo apt update
+sudo apt install -y ca-certificates curl gnupg
+sudo install -m 0755 -d /etc/apt/keyrings
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+sudo chmod a+r /etc/apt/keyrings/docker.gpg
+echo \
+  "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] \
+  https://download.docker.com/linux/ubuntu \
+  $(lsb_release -cs) stable" | \
+  sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+sudo apt update
+sudo apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+
+sudo mkdir -p /opt/bookstack
+cd /opt/bookstack
+sudo nano docker-compose.yml
+version: "3.8"
+
+services:
+  bookstack:
+    image: lscr.io/linuxserver/bookstack:latest
+    container_name: bookstack
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - APP_URL=http://bookstack.netopia.lan
+      - DB_HOST=bookstack_db
+      - DB_USER=bookstack
+      - DB_PASS=bookstackpass
+      - DB_DATABASE=bookstackapp
+    volumes:
+      - ./config:/config
+    ports:
+      - 6875:80
+    depends_on:
+      - bookstack_db
+    restart: unless-stopped
+
+  bookstack_db:
+    image: lscr.io/linuxserver/mariadb:latest
+    container_name: bookstack_db
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - MYSQL_ROOT_PASSWORD=rootpass
+      - TZ=America/Chicago
+      - MYSQL_DATABASE=bookstackapp
+      - MYSQL_USER=bookstack
+      - MYSQL_PASSWORD=bookstackpass
+    volumes:
+      - ./db:/config
+    restart: unless-stopped
+
+sudo docker compose up -d
+# failed checked logs and said missing app key
+#generate app key
+sudo docker run -it --rm --entrypoint /bin/bash lscr.io/linuxserver/bookstack:latest appkey
+#copy the output and paste it in
+sudo nano /opt/bookstack/docker-compose.yml
+# inside the bookstack: environment section add
+      - APP_KEY=base64:YOUR_KEY_HERE
+sudo docker compose down
+sudo docker compuse up -d
+sudo docker ps
+http://app01.netopia.lan:6875
+cd /opt/bookstack
+sudo docker compose down
+sudo rm -rf db
+sudo docker compose up -d
+#add nginx reverse proxy
+sudo nano /etc/nginx/sites-available/bookstack.conf
+server {
+    listen 80;
+    server_name bookstack.netopia.lan;
+
+    location / {
+        proxy_pass http://127.0.0.1:6875;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+sudo ln -s /etc/nginx/sites-available/bookstack.conf /etc/nginx/sites-enabled/
+sudo nginx -t
+sudo systemctl reload nginx
+#add a record to FreeIPA
+ipa dnsrecord-add netopia.lan bookstack --a-ip-address=10.11.11.20
