@@ -3,9 +3,10 @@ This project documents my transition from a Raspberry Pi–based all‑in‑one 
 
 File Key:
 flintnet.jpg - screenshot of LUCI and OpenMediaVault UIs from izzy
+NASgul2.txt - rehearsal of the 2nd deployment of NASgul
 #PLANNED FILES
+#DEPLOYMENT
 #network diagram
-#raw-notes.md
 #Screenshots
 
 

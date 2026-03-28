@@ -1,0 +1,305 @@
+OMV was buggy and annoying. plugins were nonexistent, and services added to the os separately conflicted with OMV. I decided it would feel cleaner to me if I manually configured samba to provide NAS in order to free up flexibility with the os. In this way I could install docker along side samba and still have NAS functionality while i tinker with containers and work my way to up to trying macvlans. Ill first rehearse a docker stack with pihole, unbound, vaultwarde, Prometheus, Grafana, suricata, and kuma on a user bridge network. then if it works ill deploy it on the pi that has smb working so far.
+
+Step 1: install docker
++++++++++
+#install dependencies
+sudo apt update
+sudo apt install ca-certificates curl gnupg
+#add dockers official gpg key
+sudo install -m 0755 -d /etc/apt/keyrings
+curl -fsSL https://download.docker.com/linux/debian/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+sudo chmod a+r /etc/apt/keyrings/docker.gpg
+#add docker repo, first find os version codename
+cat /etc/os-release #find version codename and add to the end of URL
+#ubuntu jammy
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/<ADD VERSION CODENAME HERE> stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+#update new repository and install 
+sudo apt update
+sudo apt install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+# enable on boot
+sudo systemctl enable docker
+sudo systemctl start docker
+# add user to docker group to avoid having to type sudo
+sudo usermod -aG docker <username>
++++++++++++
+
+
+Step2 install samba:
+sudo apt update
+sudo apt install samba
+#create share directory (mount ssd later)
+sudo mkdir -p /srv/share
+sudo chown -R banana:banana /srv/share
+#add samba user
+sudo smbpasswd -a banana
+#edit the config
+sudo nano /etc/samba/smb.conf
+[global]
+   workgroup = WORKGROUP
+   server string = NASgul
+   security = user
+   map to guest = never
+   smb encrypt = required
+   server min protocol = SMB2
+   server max protocol = SMB3
+
+[share]
+   path = /srv/share
+   browseable = yes
+   read only = no
+   valid users = banana
+   force user = banana
+   create mask = 0664
+   directory mask = 0775
+#restart
+sudo systemctl restart smbd
++++++++++++++++++++++
+	When trying to connect to the share from an ubuntu desktop vm
+the connection failed returning error(5) the os didn't speak
+the same encryption language.
+going to deploy to this step on the actual pi and test network share
+so that i can see if this is just a vm specific issue.
+install pi os lite update and install server tools
+sudo apt install vim dnsutils iputils-ping net-tools traceroute curl wget tar zip unzip htop iftop bmon nethogs
+Follow steps to here and test shares from lons and izzy
+#locate disk with lsblk. mine in this case was sdb-sdb1
+#mount data drive to share
+sudo mount /dev/sdb1 /srv/share
+#check with ls /srv/share
+sudo chown -R banana:banana /srv/share
+#add it to /etc/fstab so it mounts on boot. run this to find the UUID
+sudo blkid /dev/sdb1 # look for UUID="--------"
+sudo vi /etc/fstab
+#add this line
+UUID="--------"  /srv/share  ext4  defaults,noatime  0  2
+#save exit and test, the next command should return nothing
+sudo mount -a
+sudo systemctl restart smbd
+#lons and izzy now see the data drive success
+# create minimal firewall rules allowing lons izzy and router only
+sudo iptables -I INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+sudo iptables -I INPUT -s 10.4.4.1 -j ACCEPT
+sudo iptables -I INPUT -s 10.4.4.11 -j ACCEPT
+sudo iptables -I INPUT -s 10.4.4.8 -j ACCEPT
+sudo iptables -A INPUT -j DROP
+#back to VMware and docker rehearsal
+++++++++++++
+
+Step3: create docker network and directory
+# create docker directory
+sudo mkdir -p /srv/docker/{pihole,unbound,vaultwarden,prometheus,grafana,kuma}
+sudo chown -R banana:banana /srv/docker 
+#network
+docker network create electopia
+docker network ls #check
+# start with simple unbound first
+cd /srv/share/unbound
+sudo vi docker-compose.yml
+services:
+  unbound:
+    image: mvance/unbound-rpi:latest
+    container_name: unbound
+    restart: unless-stopped
+    networks:
+      - electopia
+    ports:
+      - "5335:53/udp"
+    volumes:
+      - /srv/share/unbound/unbound.conf:/etc/unbound/unbound.conf:ro
+# disable above and enable below and change the settings under DNSSEC in 
+# the unbound.conf
+#       - /srv/docker/unbound/root.hints:/var/lib/unbound/root.hints:ro
+#       - /srv/docker/unbound/root.key:/var/lib/unbound/root.key:rw
+
+networks:
+  electopia:
+    external: true
+#create unbound.conf and root.hints
+# drop root hints into place
+sudo curl -o /srv/docker/unbound/root.hints https://www.internic.net/domain/named.root
+cd /srv/docker/unbound
+sudo nano unbound.conf
+server:
+  verbosity: 1
+
+  # Listen inside Docker
+  interface: 0.0.0.0
+  port: 53
+
+  # Security + privacy
+  hide-identity: yes
+  hide-version: yes
+  harden-glue: yes
+  harden-dnssec-stripped: yes
+  harden-referral-path: yes
+  qname-minimisation: yes
+  aggressive-nsec: yes
+
+  # DNSSEC
+  # auto-trust-anchor-file: "/var/lib/unbound/root.key"
+  # Root servers (recursive mode)
+  # root-hints: "/var/lib/unbound/root.hints"
+  # enable above line if below fails. below points to root hints already
+  # contained inside the mvance image
+  root-hints: "/opt/unbound/etc/root.hints"
+  auto-trust-anchor-file: "/opt/unbound/etc/root.key"
+
+  # Performance + safety
+  edns-buffer-size: 1232
+  msg-cache-size: 50m
+  rrset-cache-size: 100m
+  cache-min-ttl: 0
+  cache-max-ttl: 86400
+
+  # Disable IPv6 if unused
+  do-ip6: no
+
+  # Prevent leaking local queries upstream
+  private-address: 10.0.0.0/8
+  private-address: 172.16.0.0/12
+  private-address: 192.168.0.0/16
+  private-address: 127.0.0.0/8
+  private-address: ::1/128
+
+  # Access control
+  access-control: 127.0.0.1/32 allow
+  access-control: 0.0.0.0/0 refuse
+
+  # Local LAN DNS zone
+  #local-zone: "lan." static
+
+  # Local hostnames
+  #local-data: "nasgul.lan A 10.44.44.3"
+  #local-data: "vaultwarden.lan A 10.44.44.3"
+  #local-data: "pihole.lan A 10.44.44.2"
+  # reverse dns
+  #local-data-ptr: "10.44.44.3 nasgul.lan"
+  #local-data-ptr: "10.44.44.3 vaultwarden.lan"
+  #local-data-ptr: "10.44.44.2 pihole.lan"
+#run it
+docker compose up -d #-d puts it in the background
+docker ps #confirm it's running
+docker network inspect electopia
+dig @127.0.0.1 -p 5335 cloudflare.com
++++++++++++++++ success
+#try disabling systemd-resolved first, if that doest work go back and, try installing first and then disabling systemd-resolved
+STEP4 pihole
+sudo mkdir -p /srv/docker/pihole/etc-pihole
+sudo mkdir -p /srv/docker/pihole/etc-dnsmasq.d
+cd /srv/docker/pihole
+sudo vi docker-compose.yml
+services:
+  pihole:
+    image: pihole/pihole:latest
+    container_name: pihole
+    restart: unless-stopped
+    networks:
+      - electopia
+    ports:
+      - "53:53/tcp"
+      - "53:53/udp"
+      - "8080:80/tcp"
+    environment:
+      TZ: "America/Chicago"
+      WEBPASSWORD: ""
+#      DNSMASQ_LISTENING: "local"
+#      FTLCONF_LOCAL_IPV4: "127.0.0.1"
+      FTLCONF_dns_upstreams: 'unbound#53'
+      FTLCONF_dns_interface: "0.0.0.0"
+#      DNS1: "unbound#53"
+#      DNS2: "unbound#53"
+    dns:
+      - 127.0.0.1
+    cap_add:
+      - NET_ADMIN
+    volumes:
+      - ./etc-pihole:/etc/pihole
+      - ./etc-dnsmasq.d:/etc/dnsmasq.d
+
+networks:
+  electopia:
+    external: true
+sudo systemctl disable --now systemd-resolved
+sudo rm /etc/resolv.conf
+echo "nameserver 127.0.0.1" | sudo tee /etc/resolv.conf
+echo "nameserver 1.1.1.1" | sudo tee -a /etc/resolv.conf
+docker compose up -d
+docker ps
+sudo rm /etc/resolv.conf
+echo "nameserver 127.0.0.1" | sudo tee /etc/resolv.conf
+docker exec -it pihole sh
+vi /etc/resolv.conf
+#add unbound's IP ADDRESS to the file
+This worked the first time through with a slightly different docker-compose.yml but ofc i wanted to make sure it still worked after reboot so i rebooted and then dig from the host failed. I reverted to snapshot before the first deployment of pihole yml several times, I tried all sorts of config changes to the docker compose file, to the pihole.toml testing the chain along the way to find that(i think im not sure) for some reason pihole queries itself for dns instead of unbound no matter what i do to try to point it to unbound. the current fix was to docker exec -it pihole sh into the container and add unbound's electopia bridged network ip address which was 172.18.0.2 to pihole's /etc/resolv.conf. this was basically the only way i could get dig to work from the host. i checked everything pihole was listening on 0.0.0.0:53 on the host so the queries were going there. if i docker exec -it unbound sh into the container dns worked fine. if i docker exec -it pihole sh into that container dig would work if i dig @unbound <anything> but regular dig (default /etc/resolv.conf pointed to 127.0.0.11) would not work until i changed the resolv file.
+OKAY I CAME BACK THE NEXT DAY, AND IT IS WORKING WTF, /etc/resolv.conf inside the pihole container was reset. IDK WHY THE STACK FAILED ON FIRST REBOOT. I guess docker's DNS or networking was lagging behind?
+
+docker network inspect electopia
+#from host confirm services on ports
+sudo ss -tulpn
+dig @127.0.0.1 cloudflare.com
+#from pihole 
+docker exec -it pihole sh
+dig @unbound cloudflare.com #confirms docker dns also
+#from unbound
+docker exec -it unbound sh
+dig weather.com
++++++++++++++++++++++ success/kinda
+
+
+STEP5 vaultwarden and self-signed rootCA
+#create folder
+mkdir -p ~/myCA
+cd ~/myCA
+#create private key
+openssl genrsa -out myCA.key 4096
+#create root certificate
+openssl req -x509 -new -nodes -key myCA.key -sha256 -days 3650 -out myCA.pem \
+  -subj "/CN=Banana-Root-CA"
+#this creates myCA.key and myCA.pem
+#create vaultwarden certificate
+#create the private key
+openssl genrsa -out vaultwarden.lan.key 4096
+#create the csr
+openssl req -new -key vaultwarden.lan.key -out vaultwarden.lan.csr \
+  -subj "/CN=vaultwarden.lan"
+#sign it with CA
+openssl x509 -req -in vaultwarden.lan.csr \
+  -CA myCA.pem -CAkey myCA.key -CAcreateserial \
+  -out vaultwarden.lan.crt -days 825 -sha256
+#place certs
+cd /srv/docker/vaultwarden
+mkdir ssl
+cp ~/myCA/vaultwarden.lan.crt ssl/
+cp ~/myCA/vaultwarden.lan.key ssl/
+cp ~/myCA/myCA.pem ssl/
+cd /srv/docker/vaultwarden
+sudo vi docker-compose.yml
+services:
+  vaultwarden:
+    image: vaultwarden/server:latest
+    container_name: vaultwarden
+    restart: unless-stopped
+    networks:
+      - electopia
+    ports:
+      - "8081:80"
+    volumes:
+      - ./data:/data
+      - ./ssl:/data/ssl
+    environment:
+      WEBSOCKET_ENABLED: "true"
+      SIGNUPS_ALLOWED: "false"
+      DOMAIN: "https://vaultwarden.lan"
+      ROCKET_TLS: '{certs="/data/ssl/vault.lan.crt",key="/data/ssl/vault.lan.key"}'
+      ALLOW_HTTP: "true"
+
+networks:
+  electopia:
+    external: true
+docker compose up -d
+docker ps
+#OPTIONAL# add this to environment:
+#access at http://<ip addr>:8081/admin
+ADMIN_TOKEN: "<your-long-random-token>"
+
+WOOOW okay stack up and working inside VMware. ready to deploy to the pi! then will continue to add the remaining containers
