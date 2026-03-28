@@ -2,12 +2,14 @@ This project documents my transition from a Raspberry Pi–based all‑in‑one 
 
 
 File Key:
-flintnet.jpg - screenshot of LUCI and OpenMediaVault UIs from izzy
-NASgul2.txt - rehearsal of the 2nd deployment of NASgul
+NASgul2.txt - VMware rehearsal of the 2nd deployment of NASgul
+Screenshots - flintnet.jpg: router and openmediavault running on the pi
+              dockerps.jpg: shows first few containers i tried
+              vw+ph.jpg: shows the web UI's from client VM(sora)
+
 #PLANNED FILES
 #DEPLOYMENT
 #network diagram
-#Screenshots
 
 
 Explanation/Blog: 
