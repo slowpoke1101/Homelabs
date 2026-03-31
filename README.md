@@ -19,12 +19,12 @@ This repository contains my complete homelab journey, including:
 Each folder contains a project README with an explanation/blog entry, file key, screenshots, raw chronological notes, configs, and troubleshooting steps.
 
 #Extras
-these names will pop up as you read and they all reference a device on my network
+these names will pop up if you read on and they all reference a device on my network
 izzy - windows laptop
 mimiserver - pi 4(old)
 NASgul - pi 4(current)
 lons - smartphone
-flint - router
+flint - router/switch/wap
 
 
 
