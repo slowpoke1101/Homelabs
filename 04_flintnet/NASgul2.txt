@@ -303,3 +303,5 @@ docker ps
 ADMIN_TOKEN: "<your-long-random-token>"
 
 WOOOW okay stack up and working inside VMware. ready to deploy to the pi! then will continue to add the remaining containers
+
+CONTINUED ON DEPLOYMENT.txt
